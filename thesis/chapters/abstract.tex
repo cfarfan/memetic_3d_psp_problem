@@ -1,0 +1,20 @@
+
+\resumenCastellano{
+El entendimiento de los procesos biológicos ha sido un desafío permanente para la humanidad. Debido a la gran cantidad de información biológica que se dispone, es que nace la bioinformática, área que se encarga de apoyar a la biología con técnicas computacionales para el tratamiento y análisis de información. Dentro de los desafíos que expone, se encuentra el problema de predicción de la estructura tridimensional de la proteína (3-D PSP), este problema es del tipo NP-Completo. Los intentos por resolverlo han implicado la construcción de las más potentes supercomputadoras solo para entender cómo funciona el proceso de plegamiento, en el cual las moléculas usando la menor cantidad de energía se disponen espacialmente en un medio acuoso. Debido al costo computacional de este problema, es que existen diversas técnicas heurísticas que sacrifican precisión por tiempo de ejecución pero que se presentan como herramientas computacionalmente viables.
+
+En este trabajo se presenta un algorítmo memético que usa información experimental extraída de la \textit{Protein Data Bank} para resolver el problema de la predicción de la estructura terciaria de la proteína. La información extraída está dispuesta como una Lista de Probabilidad de Ángulos (APL), su principal función es descartar aquellos valores que no presentan relevancia biológica al poseer una ocurrencia nula o de muy baja probabilidad. Este algoritmo hace uso de técnicas que han demostrado ser útiles en otras áreas. En específico, se usa una adaptación del método de recocido simulado como estrategia de búsqueda y una estructura jerárquica de población compuesta por 13 agentes. 
+
+La etapa de pruebas contempla comprobar la contribución de la APL, para ello se realizó 20 ejecuciones por cada una de las seis proteínas en estudio. Las 20 ejecuciones se dividen en 10 ejecuciones que incorporan la información de APL, y 10 que usan valores aleatorios. Los resultados obtenidos son satisfactorios y cumplen los objetivos planteados en este trabajo. Se logra demostrar la contribución de la APL, reflejado en el análisis de superposición de estructuras, obteniéndose RMSDs menores a 1$\AA$. Las predicciones realizadas logran simular correctamente las hojas hélices de las estructuras, no asi las hojas-$\beta$. El comportamiento del MA en proteínas de mayor longitud se mantiene al arrojar resultados con RMSDs bajos. 
+
+Finalmente, los resultados obtenidos fueron aceptados para su exposición en la \textit{Genetic and Evolutionary Computation Conference} (GECCO 2015) a efectuarse en Madrid, España los días 11 al 15 de Julio de 2015.
+\vspace*{0.5cm}
+\KeywordsES{Algoritmos meméticos; Bioinformática Estructural; Predicción de la estructura tridimensional de la proteína}
+}
+
+%\newpage
+
+%\resumenIngles{
+
+%\vspace*{0.5cm}
+%\KeywordsEN{Memetic Algorithms; Protein Structure Prediction; Structural Bioinformatics}
+%}

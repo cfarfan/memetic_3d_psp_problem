@@ -1,0 +1,3172 @@
+#include "xmin_opt.h"
+
+#define MAX_GENS        	500		//Max Generations
+#define MAX_SECS        	86400   //Max seconds
+#define MAX_GENS_NOIMPROVE	20 		//Max Generations without improvement
+#define LS_ITERATIONS   	30		//Local Search Iterations for first population
+#define LS_PROB				0.9 	//Local Search probability
+#define DIVERSITY 			10.0 	//Diversity angles
+#define CROSSOVER 			0.4 	//40% genes from parent A, 60% genes from parent B
+#define MUT_ADJUSTMENT		0.5
+#define MUT_PROB 			0.05
+#define JUMP_PROB 			0.3 	//10%
+#define JUMP_RADIUS			180.0 	//Initial radius to max jump
+#define JUMP_FACTOR			0.85	//Jump reduction factor
+//#define JUMP_ITERATIONS		10 		//Max iterations to jump		
+
+#define RUN X
+#define PROTEIN_ID "XXXX"
+#define SEQ_SIZE XXXX
+#define SEQ_STRING "XXXX"
+#define SEQ_SECSTRUCT "XXXX"
+#define ARRAY_SIZE XXXX	//ARRAY_SIZE = SEQ_SIZE * 6(angles,psi,phi,chi1,...,chi4) * 78(solutions)
+
+//Don't Touch!
+#define POP_SIZE        	78        //Population size = 13 Agents * (1 Current + 5 Pocket)
+#define ANMAT           	17202372  //6*361*361*22 (11 structures, 361x361 pairs of angles, 20 amino-acids + 2)
+
+
+int position_ind[POP_SIZE]; //ind = 6*i + k with i in [0,12] and k in [0,5]
+
+float mat_ind[ARRAY_SIZE];  //angles of each aminoacid for the whole sequence for each solution
+
+float energy_ind[POP_SIZE];
+
+molecule mol_ind[POP_SIZE];
+
+int pocket_filled[POP_SIZE];
+
+int w,y,age,stuck_age;
+float stuck_energy;
+int flag;
+
+string seqss[SEQ_SIZE]; //Array for save the second structure of each amino-acid
+molecule m,mi;          //?????
+
+float  t_mme
+		,num_mme
+		,t_inicial
+		,t_final;
+
+float   tim();          //???? //USED BUT WHERE IS DEFINED?
+float   getusertime();  //????? //USED BUT WHERE IS DEFINED?
+int f2i(float tt);
+float absolute(float tt);
+
+matrix mat2;            //?????
+matrix mat;             //?????
+int ma_bus[SEQ_SIZE];   //?????
+
+float vetAngPhi[ANMAT]; //Vector Array Data for Phi angles 
+float vetAngPsi[ANMAT]; //Vector Array Data for Psi angles
+float vetAngPro[ANMAT]; //Vector Array Data for APL
+float vetAngAcc[ANMAT]; //Vector Array with accumulate probability data
+
+string HISphi;  //String used to storage the Phi angle data from a line during the reading process of the histogram files
+string HISpsi;  //String used to storage the Psi angle data from a line during the reading process of the histogram files
+string HISprob; //String used to storage the probability of angle pair from a line during the reading process of the histogram files
+
+float maxAcum[121];
+int countAngles[121];
+
+float   MATENE_2[POP_SIZE];         //Energy array
+int     MATENE_POSI[POP_SIZE];  //Energy index array
+
+string   omega_string   //??????
+		,psi_string     //??????
+		,phi_string;    //??????
+
+string   npos       //N atom position
+		,cpos       //C atom position
+		,capos      //C Alpha atom position
+		,nm1pos     //N atom - 1 position
+		,cm1pos     //C atom - 1 position
+		,cam1pos;   //C Alpha atom - 1 position
+
+string   cmain      //C         main chain atom
+		,camain     //C Alpha   main chain atom
+		,cbside     //C Beta    side chain atom
+		,gside      //C Gamma   side chain atom
+		,dside      //C Delta   side chain atom
+		,eside      //C Epsilon side chain atom
+		,zside;     //N         side chain atom
+
+string   chi1_string_ARG    //ARG
+		,chi2_string_ARG
+		,chi3_string_ARG
+		,chi4_string_ARG
+		,chi1_string_LYS    //LYS
+		,chi2_string_LYS
+		,chi3_string_LYS
+		,chi4_string_LYS
+		,chi1_string_GLN    //GLN
+		,chi2_string_GLN
+		,chi3_string_GLN
+		,chi1_string_ASN    //ASN
+		,chi2_string_ASN
+		,chi1_string_ASP    //ASP
+		,chi2_string_ASP
+		,chi1_string_MET    //MET
+		,chi2_string_MET
+		,chi3_string_MET
+		,chi1_string_GLU    //GLU
+		,chi2_string_GLU
+		,chi3_string_GLU
+		,chi1_string_HIS    //HIS
+		,chi2_string_HIS
+		,chi1_string_PHE    //PHE
+		,chi2_string_PHE
+		,chi1_string_TYR    //TYR
+		,chi2_string_TYR
+		,chi1_string_TRP    //TRP
+		,chi2_string_TRP
+		,chi1_string_SER    //SER
+		,chi1_string_THR    //THR
+		,chi1_string_CYS    //CYS
+		,chi1_string_VAL    //VAL
+		,chi1_string_ILE    //ILE
+		,chi2_string_ILE
+		,chi1_string_LEU    //LEU
+		,chi2_string_LEU;
+
+/** 
+	* @desc   return a random integer between min and max interval
+	* @param  int min - minimun number of the interval
+	* @param  int max - maximum number of the interval
+	* @return int - rounded random float to integer 
+*/
+int randInt(int min, int max){
+	int     t;
+	float   val;
+
+	t = max-min;
+		rseed();
+	val = (rand2()*t)+min;
+
+	return ceil(val);
+};
+
+/** 
+	* @desc   return a random float between min and max interval
+	* @param  float min - minimun number of the interval
+	* @param  float max - maximum number of the interval
+	* @return float - rounded random float
+*/
+float ranFlo(float min, float max){
+	float      t
+		,val;
+	rseed();
+	if ((min==0.0) && (max==0.0)){
+		return 0.0;
+	}else{
+	 t = max-min;
+		val = (rand2()*t)+min;
+		return val;
+	}
+};
+
+/** 
+	* @desc   set the secondary structure of the respectively aminoacid by index
+	* @return int zero - doesn't matter
+*/
+int carregass(string second_struct_list){
+
+	int z;
+
+	for(z=1; z <= SEQ_SIZE; z++){
+	seqss[z] = substr(second_struct_list,z,1);
+	}
+	
+	return 0;
+};
+
+/** 
+	* @desc   returns a integer number depending on the secondary structure identificator
+	* @param  string amino - Char with case sensitive that indicates the secondary structure identificator
+	* @return int - secondary structure number id
+*/
+int retornaEstado(string stateconf_str) {
+	if(stateconf_str == "B" || stateconf_str == "b")
+		return 1;
+	if(stateconf_str == "C" || stateconf_str == "I")
+		return 2;
+	if(stateconf_str == "E")
+		return 3;
+	if(stateconf_str == "G")
+		return 4;
+	if(stateconf_str == "H")
+		return 5;
+	if(stateconf_str == "T")
+		return 6;
+};
+
+string retornaEstadoInverso(int stateconf_int){
+	if(stateconf_int == 1)
+		return "B";
+	if(stateconf_int == 2)
+		return "C";
+	if(stateconf_int == 3)
+		return "E";
+	if(stateconf_int == 4)
+		return "G";
+	if(stateconf_int == 5)
+		return "H";
+	if(stateconf_int == 6)
+		return "T";
+};
+
+/** 
+	* @desc   returns a integer number depending on the aminoacid identificator
+	* @param  string amino - Char with case sensitive that indicates the aminoacid identificator
+	* @return int - aminoacid number id
+*/
+int posicaoaa(string amino){
+	if(amino == "A")
+	return 1;
+	if(amino == "G")
+	return 2;
+	if(amino == "V")
+	return 3;
+	if(amino == "L")
+	return 4;
+	if(amino == "I")
+	return 5;
+	if(amino == "M")
+	return 6;
+	if(amino == "F")
+	return 7;
+	if(amino == "W")
+	return 8;
+	if(amino == "P")
+	return 9;
+	if(amino == "S")
+	return 10;
+	if(amino == "T")
+	return 11;
+	if(amino == "C")
+	return 12;
+	if(amino == "Y")
+	return 13;
+	if(amino == "N")
+	return 14;
+	if(amino == "Q")
+	return 15;
+	if(amino == "D")
+	return 16;
+	if(amino == "E")
+	return 17;
+	if(amino == "K")
+	return 18;
+	if(amino == "R")
+	return 19;
+	if(amino == "H")
+	return 20;
+};
+
+/** 
+	* @desc   returns a integer number depending on the aminoacid identificator
+	* @param  string amino - The aminoacid identificator
+	* @return int - aminoacid number id
+*/
+int lettercode(string amino){
+	if(amino == "ALA")
+		return 1;
+	if(amino == "GLY")
+		return 2;
+	if(amino == "VAL")
+		return 3;
+	if(amino == "LEU")
+		return 4;
+	if(amino == "ILE")
+		return 5;
+	if(amino == "MET")
+		return 6;
+	if(amino == "PHE")
+		return 7;
+	if(amino == "TRP")
+		return 8;
+	if(amino == "PRO")
+		return 9;
+	if(amino == "SER")
+		return 10;
+	if(amino == "THR")
+		return 11;
+	if((amino == "CYS") || (amino == "CYX"))
+		return 12;
+	if(amino == "TYR")
+		return 13;
+	if(amino == "ASN")
+		return 14;
+	if(amino == "GLN")
+		return 15;
+	if(amino == "ASP")
+		return 16;
+	if(amino == "GLU")
+		return 17;
+	if(amino == "LYS")
+		return 18;
+	if(amino == "ARG")
+		return 19;
+	if ((amino == "HIS") || (amino == "HID"))
+		return 20;
+};
+
+/** 
+	* @desc   returns a string identificator depending on the aminoacid number id
+	* @param  int amino - The aminoacid number id
+	* @return string - the aminoacid string id
+*/
+string posicaoaainverso(int amino){
+	if(amino == 1)
+	return "A";
+	if(amino == 2)
+	return "G";
+	if(amino == 3)
+	return "V";
+	if(amino == 4)
+	return "L";
+	if(amino == 5)
+	return "I";
+	if(amino == 6)
+	return "M";
+	if(amino == 7)
+	return "F";
+	if(amino == 8)
+	return "W";
+	if(amino == 9)
+	return "P";
+	if(amino == 10)
+	return "S";
+	if(amino == 11)
+	return "T";
+	if(amino == 12)
+	return "C";
+	if(amino == 13)
+	return "Y";
+	if(amino == 14)
+	return "N";
+	if(amino == 15)
+	return "Q";
+	if(amino == 16)
+	return "D";
+	if(amino == 17)
+	return "E";
+	if(amino == 18)
+	return "K";
+	if(amino == 19)
+	return "R";
+	if(amino == 20)
+	return "H";
+};
+
+/** 
+	* @desc   read the 11*20 histogram files, and save the, accumulate probability
+	*         for each combination (aminoacid, 2nd-structure) and quantity of angle pairs
+	*         with probability not null   
+	* @return int - doesn't matter
+*/
+int read_histograms(){
+	file    fp2;    //buffer structure for reading histogram files
+
+	int     count2  //quantity of angles with probability not null
+			,aa     //aminoacid number id
+			,i      //index counter for aminoacids
+			,j;     //index counter for secondary structures
+
+	string   nome[121] //6 x 20 = 120 //6 secondary structures, 20 aminoacids
+			,ami;
+
+
+	nome[1]       = "../histograms/histogram-ALA_B.txt";
+	nome[2]       = "../histograms/histogram-ALA_C.txt";
+	nome[3]       = "../histograms/histogram-ALA_E.txt";
+	nome[4]       = "../histograms/histogram-ALA_G.txt";
+	nome[5]       = "../histograms/histogram-ALA_H.txt";
+	nome[6]       = "../histograms/histogram-ALA_T.txt";
+
+	nome[7]       = "../histograms/histogram-GLY_B.txt";
+	nome[8]       = "../histograms/histogram-GLY_C.txt";
+	nome[9]       = "../histograms/histogram-GLY_E.txt";
+	nome[10]      = "../histograms/histogram-GLY_G.txt";
+	nome[11]      = "../histograms/histogram-GLY_H.txt";
+	nome[12]      = "../histograms/histogram-GLY_T.txt";
+
+	nome[13]      = "../histograms/histogram-VAL_B.txt";
+	nome[14]      = "../histograms/histogram-VAL_C.txt";
+	nome[15]      = "../histograms/histogram-VAL_E.txt";
+	nome[16]      = "../histograms/histogram-VAL_G.txt";
+	nome[17]      = "../histograms/histogram-VAL_H.txt";
+	nome[18]      = "../histograms/histogram-VAL_T.txt";
+
+	nome[19]      = "../histograms/histogram-LEU_B.txt";
+	nome[20]      = "../histograms/histogram-LEU_C.txt";
+	nome[21]      = "../histograms/histogram-LEU_E.txt";
+	nome[22]      = "../histograms/histogram-LEU_G.txt";
+	nome[23]      = "../histograms/histogram-LEU_H.txt";
+	nome[24]      = "../histograms/histogram-LEU_T.txt";
+
+	nome[25]      = "../histograms/histogram-ILE_B.txt";
+	nome[26]      = "../histograms/histogram-ILE_C.txt";
+	nome[27]      = "../histograms/histogram-ILE_E.txt";
+	nome[28]      = "../histograms/histogram-ILE_G.txt";
+	nome[29]      = "../histograms/histogram-ILE_H.txt";
+	nome[30]      = "../histograms/histogram-ILE_T.txt";
+
+	nome[31]      = "../histograms/histogram-MET_B.txt";
+	nome[32]      = "../histograms/histogram-MET_C.txt";
+	nome[33]      = "../histograms/histogram-MET_E.txt";
+	nome[34]      = "../histograms/histogram-MET_G.txt";
+	nome[35]      = "../histograms/histogram-MET_H.txt";
+	nome[36]      = "../histograms/histogram-MET_T.txt"; 
+
+	nome[37]    = "../histograms/histogram-PHE_B.txt";
+	nome[38]      = "../histograms/histogram-PHE_C.txt";
+	nome[39]      = "../histograms/histogram-PHE_E.txt";
+	nome[40]      = "../histograms/histogram-PHE_G.txt";
+	nome[41]      = "../histograms/histogram-PHE_H.txt";
+	nome[42]      = "../histograms/histogram-PHE_T.txt"; 
+
+	nome[43]      = "../histograms/histogram-TRP_B.txt";
+	nome[44]      = "../histograms/histogram-TRP_C.txt";
+	nome[45]      = "../histograms/histogram-TRP_E.txt";
+	nome[46]      = "../histograms/histogram-TRP_G.txt";
+	nome[47]      = "../histograms/histogram-TRP_H.txt";
+	nome[48]      = "../histograms/histogram-TRP_T.txt";
+
+	nome[49]      = "../histograms/histogram-PRO_B.txt";
+	nome[50]      = "../histograms/histogram-PRO_C.txt";
+	nome[51]      = "../histograms/histogram-PRO_E.txt";
+	nome[52]      = "../histograms/histogram-PRO_G.txt";
+	nome[53]      = "../histograms/histogram-PRO_H.txt";
+	nome[54]      = "../histograms/histogram-PRO_T.txt"; 
+
+	nome[55]      = "../histograms/histogram-SER_B.txt";
+	nome[56]      = "../histograms/histogram-SER_C.txt";
+	nome[57]      = "../histograms/histogram-SER_E.txt";
+	nome[58]      = "../histograms/histogram-SER_G.txt";
+	nome[59]      = "../histograms/histogram-SER_H.txt";
+	nome[60]      = "../histograms/histogram-SER_T.txt"; 
+
+	nome[61]      = "../histograms/histogram-THR_B.txt";
+	nome[62]      = "../histograms/histogram-THR_C.txt";
+	nome[63]      = "../histograms/histogram-THR_E.txt";
+	nome[64]      = "../histograms/histogram-THR_G.txt";
+	nome[65]      = "../histograms/histogram-THR_H.txt";
+	nome[66]      = "../histograms/histogram-THR_T.txt"; 
+
+	nome[67]      = "../histograms/histogram-CYS_B.txt";
+	nome[68]      = "../histograms/histogram-CYS_C.txt";
+	nome[69]      = "../histograms/histogram-CYS_E.txt";
+	nome[70]      = "../histograms/histogram-CYS_G.txt";
+	nome[71]      = "../histograms/histogram-CYS_H.txt";
+	nome[72]      = "../histograms/histogram-CYS_T.txt";
+
+	nome[73]      = "../histograms/histogram-TYR_B.txt";
+	nome[74]      = "../histograms/histogram-TYR_C.txt";
+	nome[75]      = "../histograms/histogram-TYR_E.txt";
+	nome[76]      = "../histograms/histogram-TYR_G.txt";
+	nome[77]      = "../histograms/histogram-TYR_H.txt";
+	nome[78]      = "../histograms/histogram-TYR_T.txt"; 
+
+	nome[79]      = "../histograms/histogram-ASN_B.txt";
+	nome[80]      = "../histograms/histogram-ASN_C.txt";
+	nome[81]      = "../histograms/histogram-ASN_E.txt";
+	nome[82]      = "../histograms/histogram-ASN_G.txt";
+	nome[83]      = "../histograms/histogram-ASN_H.txt";
+	nome[84]      = "../histograms/histogram-ASN_T.txt"; 
+
+	nome[85]      = "../histograms/histogram-GLN_B.txt";
+	nome[86]      = "../histograms/histogram-GLN_C.txt";
+	nome[87]      = "../histograms/histogram-GLN_E.txt";
+	nome[88]      = "../histograms/histogram-GLN_G.txt";
+	nome[89]      = "../histograms/histogram-GLN_H.txt";
+	nome[90]      = "../histograms/histogram-GLN_T.txt";
+
+	nome[91]      = "../histograms/histogram-ASP_B.txt";
+	nome[92]      = "../histograms/histogram-ASP_C.txt";
+	nome[93]      = "../histograms/histogram-ASP_E.txt";
+	nome[94]      = "../histograms/histogram-ASP_G.txt";
+	nome[95]      = "../histograms/histogram-ASP_H.txt";
+	nome[96]      = "../histograms/histogram-ASP_T.txt";
+
+	nome[97]      = "../histograms/histogram-GLU_B.txt";
+	nome[98]      = "../histograms/histogram-GLU_C.txt";
+	nome[99]      = "../histograms/histogram-GLU_E.txt";
+	nome[100]     = "../histograms/histogram-GLU_G.txt";
+	nome[101]     = "../histograms/histogram-GLU_H.txt";
+	nome[102]     = "../histograms/histogram-GLU_T.txt";
+
+	nome[103]     = "../histograms/histogram-LYS_B.txt";
+	nome[104]     = "../histograms/histogram-LYS_C.txt";
+	nome[105]     = "../histograms/histogram-LYS_E.txt";
+	nome[106]     = "../histograms/histogram-LYS_G.txt";
+	nome[107]     = "../histograms/histogram-LYS_H.txt";
+	nome[108]     = "../histograms/histogram-LYS_T.txt";  
+
+	nome[109]     = "../histograms/histogram-ARG_B.txt";
+	nome[110]     = "../histograms/histogram-ARG_C.txt";
+	nome[111]     = "../histograms/histogram-ARG_E.txt";
+	nome[112]     = "../histograms/histogram-ARG_G.txt";
+	nome[113]     = "../histograms/histogram-ARG_H.txt";
+	nome[114]     = "../histograms/histogram-ARG_T.txt";
+
+	nome[115]     = "../histograms/histogram-HIS_B.txt";
+	nome[116]     = "../histograms/histogram-HIS_C.txt";
+	nome[117]     = "../histograms/histogram-HIS_E.txt";
+	nome[118]     = "../histograms/histogram-HIS_G.txt";
+	nome[119]     = "../histograms/histogram-HIS_H.txt";
+	nome[120]     = "../histograms/histogram-HIS_T.txt";
+
+
+	for (i=0; i<20; i++){   //for each of 20 aminoacids
+
+		ami = posicaoaainverso(i+1);    //get the aminoacid string id
+		aa  = posicaoaa(ami);           //get the aminoacid number id
+	
+		for (j=1; j<=6; j++){  //for each of 6 secondary structures
+
+			count2 = 0;                         //reset the counter for each reading file process
+			fp2 = fopen(nome[(6*i)+j],"r");     //open the histogram file
+
+			if (fp2 == NULL){   //if error, then exist
+				printf("%s Can't open input file in.list!\n", nome[(6*i)+j]);
+				exit(1);
+			}
+
+			printf("Reading %s\n",nome[(6*i)+j]);
+
+			while (fscanf(fp2, "%s %s %s", HISphi, HISpsi, HISprob) != EOF){ //read the whole file till EOF
+
+				if(atof(HISprob) != 0.0){ //if the probability isn't null
+					vetAngPhi[((6*361*361*aa)+(361*361*j)+count2)] = atof(HISphi); // vetor para phi
+					vetAngPsi[((6*361*361*aa)+(361*361*j)+count2)] = atof(HISpsi); // vetor para psi
+					vetAngPro[((6*361*361*aa)+(361*361*j)+count2)] = atof(HISprob); // vetor para probabilidade
+
+					if(count2 > 0){ //if we have already probability saved
+						vetAngAcc[((6*361*361*aa)+(361*361*j)+count2)] = vetAngAcc[((6*361*361*aa)+(361*361*j)+count2-1)] + vetAngPro[((6*361*361*aa)+(361*361*j)+count2)];
+					}else{ // if not we save it
+						vetAngAcc[((6*361*361*aa)+(361*361*j)+count2)] = atof(HISprob); 
+					}
+
+					count2 = count2 + 1;
+				}
+
+				free(HISphi);
+				free(HISpsi);
+				free(HISprob);
+
+			}
+
+			maxAcum[(6*aa)+j] = vetAngAcc[((6*361*361*aa)+(361*361*j)+count2-1)]; // save the higher value
+			countAngles[(6*aa)+j] = count2-1; // total angle pairs minus 1 because we saved data from count2 = 0 // |{0,1,..,count2-1}| equals count2
+			fclose(fp2);
+
+		}
+	}
+};
+
+/** 
+	* @desc   select an angle depending on a given probability
+	* @param  string res - the aminoacid string id
+	* @param  int ss - the second structure number id 
+	* @return int - position of selected angle 
+*/
+int seleang(string res, int ss){
+	int  i
+		,j
+		,aa;
+
+	float random;
+
+	aa      = posicaoaa(res); //get the aminoacid number id
+	j       = ss;
+	random  = ranFlo(0.0, maxAcum[(6*aa)+j]);
+	for(i=0;i<countAngles[(6*aa)+j];i++){
+		if(vetAngAcc[(6*361*361*aa)+(361*361*j)+i] >= random){
+			return i;
+		}
+	}
+};
+
+int show_rand_angle_per_comb() {
+
+	string   amino_str_id;
+	int      amino_int_id
+			,i
+			,j
+			,angle_position
+			,angle_index;
+
+	for(i = 0; i < 20; i++){
+		amino_str_id = posicaoaainverso(i+1);
+		amino_int_id = posicaoaa(amino_str_id);
+		for(j = 1; j<=6; j++){
+			rseed();
+			angle_index = seleang(amino_str_id,j);
+			angle_position = (6*361*361*amino_int_id)+(361*361*j)+angle_index;
+			//printf("%d %d\n", angle_index, angle_position );
+			//if(vetAngPro[angle_position] == 1.0)
+			printf("%s\t %s\t rand[phi:\t%f,\tpsi:\t%f] \tprob: %f\n",amino_str_id,retornaEstadoInverso(j), vetAngPhi[angle_position],vetAngPsi[angle_position],vetAngPro[angle_position]);
+		}
+	}
+	return 0;
+};
+
+/* FUNCAO PARA FIXAR OS ANGULOS DA MOLECULA */
+int fix_angles( molecule m1, int i, int nr, float omega, float psi, float phi, residue r, float chi1, float chi2, float chi3, float chi4){
+	float    a0 
+			,rot_angle
+			,phi0
+			,psi0
+			,omega0
+			,rot_angle2
+			,chi1_0
+			,chi2_0
+			,chi3_0
+			,chi4_0;
+
+	point    n_xyz      //coords for res i bb
+			,ca_xyz     //coords for res i bb
+			,c_xyz      //coords for res i bb
+			,cm1_xyz    //coords for res i - 1 bb
+			,u
+			,v
+			,zax
+			,p_head
+			,p_tail
+			,va
+			,vb
+			,vc;
+
+	atom    a;
+			 
+	int     ii;
+
+	if (i > nr)
+		nr = i;
+
+	omega_string = sprintf(":%d-%d:", i, nr);
+	psi_string = sprintf(":%d:O|:%d-%d:", i - 1, i, nr);
+	phi_string = sprintf(":%d:C*,O*,?[A-Z]*|:%d-%d:*", i, i + 1, nr);
+	npos = sprintf(":%d:N", i);
+	cpos = sprintf(":%d:C", i);
+	capos = sprintf(":%d:CA", i);
+	cm1pos = sprintf(":%d:C", i - 1);
+	cam1pos = sprintf(":%d:CA", i - 1);
+	nm1pos = sprintf(":%d:N", i - 1);
+
+	setpoint(m1, npos, n_xyz);
+	setpoint(m1, capos, ca_xyz);
+	setpoint(m1, cpos, c_xyz);
+	setpoint(m1, cm1pos, cm1_xyz);
+	
+	u = ca_xyz - n_xyz;
+	v = cm1_xyz - n_xyz;
+	zax = u ^ v;
+
+	a0 = angle(m1, cm1pos, npos, capos); //calcula o angulo entre 3 pontos
+	rot_angle = 121.9 - a0;
+
+	p_tail = n_xyz;
+	p_head = n_xyz + zax;
+
+	mat = rot4p(p_head, p_tail, rot_angle);
+	transformmol(mat, m1, omega_string); 
+	
+	psi0 = torsion(m1, nm1pos, cam1pos, cm1pos, npos); 
+	rot_angle = psi - psi0;
+	mat = rot4(m1, cam1pos, cm1pos, rot_angle); 
+	transformmol(mat, m1, psi_string);
+
+	omega0 = torsion(m1, cam1pos, cm1pos, npos, capos); 
+	rot_angle = omega - omega0;
+	mat = rot4(m1, cm1pos, npos, rot_angle); 
+	transformmol(mat, m1, omega_string);
+
+	phi0 = torsion(m1, cm1pos, npos, capos, cpos); 
+	rot_angle = phi - phi0;
+	mat = rot4(m1, npos, capos, rot_angle); 
+	transformmol(mat, m1, phi_string);
+
+	// SER
+	chi1_string_SER = sprintf(":%d:*B*,*G",i); 
+	if (r.resname == "SER"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:OG",i);
+
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_SER);
+	}
+
+	// CYS
+	chi1_string_CYS = sprintf(":%d:*B*,*G",i); 
+	if (r.resname == "CYS"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:SG",i);
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_CYS);
+	}
+
+	// THR
+	chi1_string_THR = sprintf(":%d:*B*,*G*",i); 
+	if (r.resname == "THR"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:OG1",i);
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_THR);
+	}
+
+
+	// VAL
+	chi1_string_VAL = sprintf(":%d:*B,*G*",i);
+	if (r.resname == "VAL"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG1",i);
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_VAL);
+	}
+
+	// ILE
+	chi1_string_ILE = sprintf(":%d:*B,*G*,*D*",i);
+	chi2_string_ILE = sprintf(":%d:*G1*,*D*",i);
+	if (r.resname == "ILE"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG1",i);
+		dside = sprintf(":%d:CD1",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_ILE);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_ILE);
+	}
+
+	// LEU
+	chi1_string_LEU = sprintf(":%d:*B*,*G*,*D*",i);
+	chi2_string_LEU = sprintf(":%d:*G*,*D*",i);
+	if (r.resname == "LEU"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD1",i);
+		
+			//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_LEU);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_LEU);
+	}
+
+	// ASP
+	chi1_string_ASP = sprintf(":%d:*B*,*G*,*D*",i);
+	chi2_string_ASP = sprintf(":%d:*G*,*D*",i);
+	if (r.resname == "ASP"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:OD1",i);
+		
+			//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_ASP);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_ASP);
+	}
+
+
+	// ASN
+	chi1_string_ASN = sprintf(":%d:*B*,*G*,*D*",i);
+	chi2_string_ASN = sprintf(":%d:*G*,*D*",i);
+	if (r.resname == "ASN"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:OD1",i);
+		
+			//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_ASN);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_ASN);
+	}
+
+	// HIS
+	chi1_string_HIS = sprintf(":%d:*B*,*G*,*D*,*E*",i);
+	chi2_string_HIS = sprintf(":%d:*G*,*D*,*E*",i);
+	if (r.resname == "HIS"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:ND1",i);
+		
+			//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_HIS);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_HIS);
+	}
+
+
+	// PHE
+	chi1_string_PHE = sprintf(":%d:*B*,*G*,*D*,*E*,*Z*",i);
+	chi2_string_PHE = sprintf(":%d:*G*,*D*,*E*,*Z*",i);
+	if (r.resname == "PHE"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD1",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_PHE);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_PHE);
+		}
+
+
+	// TYR
+	chi1_string_TYR = sprintf(":%d:*B*,*G*,*D*,*E*,*Z*,OH,HH",i);
+	chi2_string_TYR = sprintf(":%d:*G*,*D*,*E*,*Z*,OH,HH",i);
+	if (r.resname == "TYR"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD1",i);
+		
+			//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_TYR);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_TYR);
+	}
+
+
+	// TRP
+	chi1_string_TRP = sprintf(":%d:*B*,*G*,*D*,*E*,*Z*,*H2",i);
+	chi2_string_TRP = sprintf(":%d:*G*,*D*,*E*,*Z*,*H2",i);
+	if (r.resname == "TRP"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD1",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_TRP);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_TRP);
+	}
+
+	//MET
+	chi1_string_MET = sprintf(":%d:*B*,*G*,*D*,*E*",i);
+	chi2_string_MET = sprintf(":%d:*G*,*D*,*E*",i);
+	chi3_string_MET = sprintf(":%d:*D*,*E*",i);
+
+	if (r.resname == "MET"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:SD",i);
+		eside = sprintf(":%d:CE",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_MET);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_MET);
+
+		//chi3
+		chi3_0 = torsion(m1,cbside,gside,dside,eside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi3 - chi3_0;
+		mat2 = rot4(m1, gside, dside, rot_angle2);
+		transformmol(mat2, m1, chi3_string_MET);
+	}
+
+
+	//GLU
+	chi1_string_GLU = sprintf(":%d:*B*,*G*,*D*,*E*",i);
+	chi2_string_GLU = sprintf(":%d:*G*,*D*,*E*",i);
+	chi3_string_GLU = sprintf(":%d:*D*,*E*",i);
+
+	if (r.resname == "GLU"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD",i);
+		eside = sprintf(":%d:OE1",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_GLU);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_GLU);
+
+		//chi3
+		chi3_0 = torsion(m1,cbside,gside,dside,eside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi3 - chi3_0;
+		mat2 = rot4(m1, gside, dside, rot_angle2);
+		transformmol(mat2, m1, chi3_string_GLU);
+	}
+	
+	//GLN
+	chi1_string_GLN = sprintf(":%d:*B*,*G*,*D*,*E*",i);
+	chi2_string_GLN = sprintf(":%d:*G*,*D*,*E*",i);
+	chi3_string_GLN = sprintf(":%d:*D*,*E*",i);
+
+	if (r.resname == "GLN"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD",i);
+		eside = sprintf(":%d:OE1",i);
+		
+		//chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_GLN);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_GLN);
+
+		//chi3
+		chi3_0 = torsion(m1,cbside,gside,dside,eside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi3 - chi3_0;
+		mat2 = rot4(m1, gside, dside, rot_angle2);
+		transformmol(mat2, m1, chi3_string_GLN);
+	}
+
+	//LYS
+	chi1_string_LYS = sprintf(":%d:*B*,*G*,*D*,*E*,*Z*",i);
+	chi2_string_LYS = sprintf(":%d:*G*,*D*,*E*,*Z*",i);
+	chi3_string_LYS = sprintf(":%d:*D*,*E*,*Z*",i);
+	chi4_string_LYS = sprintf(":%d:*E*,*Z*",i);
+
+	if (r.resname == "LYS"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD",i);
+		eside = sprintf(":%d:CE",i);
+		zside = sprintf(":%d:NZ",i);
+
+		 //chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_LYS);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_LYS);
+
+		//chi3
+		chi3_0 = torsion(m1,cbside,gside,dside,eside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi3 - chi3_0;
+		mat2 = rot4(m1, gside, dside, rot_angle2);
+		transformmol(mat2, m1, chi3_string_LYS);
+
+		//chi4
+		chi4_0 = torsion(m1,gside,dside,eside,zside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi4 - chi4_0;
+		mat2 = rot4(m1, dside, eside, rot_angle2);
+		transformmol(mat2, m1, chi4_string_LYS);
+	}
+
+	//ARG
+	chi1_string_ARG = sprintf(":%d:*B*,*G*,*D*,*E*,*Z*,HH*,NH*",i);
+	chi2_string_ARG = sprintf(":%d:*G*,*D*,*E*,*Z*,HH*,NH*",i);
+	chi3_string_ARG = sprintf(":%d:*D*,*E*,*Z*,HH*,NH*",i);
+	chi4_string_ARG = sprintf(":%d:*E*,*Z*,HH*,NH*",i);
+
+	if (r.resname == "ARG"){
+		cmain = sprintf(":%d:N",i);
+		camain = sprintf(":%d:CA",i); 
+		cbside = sprintf(":%d:CB",i);
+		gside = sprintf(":%d:CG",i);
+		dside = sprintf(":%d:CD",i);
+		eside = sprintf(":%d:NE",i);
+		zside = sprintf(":%d:CZ",i);
+
+		 //chi1
+		chi1_0 = torsion(m1,cmain,camain,cbside,gside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi1 - chi1_0;
+		mat2 = rot4(m1, camain, cbside, rot_angle2); 
+		transformmol(mat2, m1, chi1_string_ARG);
+
+		//chi2
+		chi2_0 = torsion(m1,camain,cbside,gside,dside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi2 - chi2_0;
+		mat2 = rot4(m1, cbside, gside, rot_angle2); 
+		transformmol(mat2, m1, chi2_string_ARG);
+
+		//chi3
+		chi3_0 = torsion(m1,cbside,gside,dside,eside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi3 - chi3_0;
+		mat2 = rot4(m1, gside, dside, rot_angle2);
+		transformmol(mat2, m1, chi3_string_ARG);
+
+		//chi4
+		chi4_0 = torsion(m1,gside,dside,eside,zside); //calcula o angulo entre 3 pontos  
+		rot_angle2 = chi4 - chi4_0;
+		mat2 = rot4(m1, dside, eside, rot_angle2);
+		transformmol(mat2, m1, chi4_string_ARG);
+		}
+	return 0;
+};
+
+float calculate_energy(molecule m1, molecule m2){
+	float m_xyz[dynamic], f_xyz[dynamic];
+	float fret;
+	float volume;
+	float dummy[dynamic];
+	float ti_mme;
+	allocate dummy[2];
+	allocate m_xyz[3*m1.natoms];
+	allocate f_xyz[3*m1.natoms];
+
+	//Marcio mod
+	//mm_options("cut=999.0, gb=5, surften=0.005, nsnb=999");
+
+	setxyz_from_mol(m1, NULL, m_xyz );
+	mme_init(m1, NULL, "::ZZZ", dummy, NULL );
+
+	ti_mme = getusertime();
+	fret = mme_rattle( m_xyz, f_xyz, 1 );
+	t_mme = t_mme + (getusertime() - ti_mme);
+	num_mme = num_mme + 1;
+	deallocate m_xyz;
+	deallocate f_xyz;
+	deallocate dummy;
+	return fret;
+};
+
+float converteAminos(string amino){
+	if(amino == "G")
+	return 1.0;
+	if(amino == "A")
+	return 2.0;
+	if(amino == "V")
+	return 3.0;
+	if(amino == "L")
+	return 4.0;
+	if(amino == "I")
+	return 5.0;
+	if(amino == "M")
+	return 6.0;
+	if(amino == "F")
+	return 7.0;
+	if(amino == "W")
+	return 8.0;
+	if(amino == "P")
+	return 9.0;
+	if(amino == "S")
+	return 10.0;
+	if(amino == "T")
+	return 11.0;
+	if(amino == "C")
+	return 12.0;
+	if(amino == "Y")
+	return 13.0;
+	if(amino == "N")
+	return 14.0;
+	if(amino == "Q")
+	return 15.0;
+	if(amino == "D")
+	return 16.0;
+	if(amino == "E")
+	return 17.0;
+	if(amino == "K")
+	return 18.0;
+	if(amino == "R")
+	return 19.0;
+	if(amino == "H")
+	return 20.0;
+};
+
+string convletra(string amino){
+	if(amino == "GLY")
+	return "G";
+	if(amino == "ALA")
+	return "A";
+	if(amino == "VAL")
+	return "V";
+	if(amino == "LEU")
+	return "L";
+	if(amino == "ILE")
+	return "I";
+	if(amino == "MET")
+	return "M";
+	if(amino == "PHE")
+	return "F";
+	if(amino == "TRP")
+	return "W";
+	if(amino == "PRO")
+	return "P";
+	if(amino == "SER")
+	return "S";
+	if(amino == "THR")
+	return "T";
+	if((amino == "CYS") || (amino == "CYX"))
+	return "C";
+	if(amino == "TYR")
+	return "Y";
+	if(amino == "ASN")
+	return "N";
+	if(amino == "GLN")
+	return "Q";
+	if(amino == "ASP")
+	return "D";
+	if(amino == "GLU")
+	return "E";
+	if(amino == "LYS")
+	return "K";
+	if(amino == "ARG")
+	return "R";
+	if((amino == "HIS") || (amino == "HID"))
+	return "H";
+};
+
+int retornaNumChi(string amino){
+	if ((amino == "S") || (amino == "C") || (amino == "T") || (amino == "V"))
+	return 1;
+	if ((amino == "I") || (amino == "L") || (amino == "D") || (amino == "N") || (amino == "H") || (amino == "F") || (amino == "Y")|| (amino == "W"))
+	return 2;
+	if ((amino == "M") || (amino == "E") || (amino == "Q"))
+	return 3;
+	if ((amino == "K") || (amino == "R"))
+	return 4;
+	if ((amino == "A") || (amino == "G") || (amino == "P"))
+	return 0;
+};
+
+float rotMIN(string amino, int chi) 
+{ 
+	if (amino == "SER") 
+	{ 
+		if (chi == 1) 
+			return -39.0974526602; //media 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if ((amino == "CYS")||(amino == "CYX")) 
+	{ 
+		if (chi == 1) 
+			return -157.751341619; //media 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "THR") 
+	{ 
+		if (chi == 1) 
+			return -153.24819924; //media 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "VAL") 
+	{ 
+		if (chi == 1) 
+			return -37.1805850827; //media 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "ILE") 
+	{ 
+		if (chi == 1) 
+			return -150.62880823; //media 
+		if (chi == 2) 
+			return -41.9536560708; //media 
+	} 
+	if (amino == "LEU") 
+	{ 
+		if (chi == 1) 
+			return -158.45718524; //media 
+		if (chi == 2) 
+			return -41.1651784582 ; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "ASP") 
+	{ 
+		if (chi == 1) 
+			return -154.759146052; //media 
+		if (chi == 2) 
+			return -46.0141277967; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "ASN") 
+	{ 
+		if (chi == 1) 
+			return -154.999658218; //media 
+		if (chi == 2) 
+			return -78.6804677964; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+if ((amino == "HIS") || (amino == "HID")) 
+{ 
+	if (chi == 1) 
+		return -156.435615538; //media 
+	if (chi == 2) 
+		return -96.5817995178; //media 
+	if (chi == 3) 
+		return 0.0; 
+	if (chi == 4) 
+		return 0.0; 
+	} 
+
+	if (amino == "PHE") 
+	{ 
+		if (chi == 1) 
+			return -158.224844705; //media 
+		if (chi == 2) 
+			return -1.89539086499; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+	if (amino == "TYR") 
+	{ 
+		if (chi == 1) 
+			return -158.518614718; //media 
+		if (chi == 2) 
+			return -3.56448935905; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+	if (amino == "TRP") 
+	{ 
+		if (chi == 1) 
+			return -159.333604703; //media 
+		if (chi == 2) 
+			return -77.5000361533; //media 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+	if (amino == "MET") 
+	{ 
+		if (chi == 1) 
+			return -159.535936996; //media 
+		if (chi == 2) 
+			return -95.9804879414; //media 
+		if (chi == 3) 
+			return -113.617738242; //media 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+	if (amino == "GLU") 
+	{ 
+		if (chi == 1) 
+			return -154.3304485; //media 
+		if (chi == 2) 
+			return -114.381414072; //media 
+		if (chi == 3) 
+			return -46.2622279015; //media 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "GLN") 
+	{ 
+		if (chi == 1) 
+			return -156.107286967; //media 
+		if (chi == 2) 
+			return -130.31218703; //media 
+		if (chi == 3) 
+			return -107.208042715; //media 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+
+	if (amino == "LYS") 
+	{ 
+		if (chi == 1) 
+			return -155.042685651; //media 
+		if (chi == 2) 
+			return -131.521384644; //media 
+		if (chi == 3) 
+			return -131.389541682; //media 
+		if (chi == 4) 
+			return -131.389541682; //media 
+	} 
+
+	if (amino == "ARG") 
+	{ 
+		if (chi == 1) 
+			return -151.830993739; //media 
+		if (chi == 2) 
+			return -105.206308323; //media 
+		if (chi == 3) 
+			return -136.745709869; //media 
+		if (chi == 4) 
+			return -136.745709869; //media 
+	} 
+
+
+	if ((amino == "PRO")||(amino == "ALA")||(amino == "GLY")) 
+	{ 
+		if (chi == 1) 
+			return 0.0; //media 
+		if (chi == 2) 
+			return 0.0; //media 
+		if (chi == 3) 
+			return 0.0; //media 
+		if (chi == 4) 
+			return 0.0; //media 
+	} 
+}; 
+
+
+float rotMAX(string amino, int chi) { 
+
+	if (amino == "SER") 
+	{ 
+		if (chi == 1) 
+			return 159.364119327; //desvio 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if ((amino == "CYS")||(amino == "CYX")) 
+	{ 
+		if (chi == 1) 
+			return 39.1513416194; //desvio 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "THR") 
+	{ 
+		if (chi == 1) 
+			return 38.1815325735; //desvio 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "VAL") 
+	{ 
+		if (chi == 1) 
+			return 156.980585083; //desvio 
+		if (chi == 2) 
+			return 0.0; 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "ILE") 
+	{ 
+		if (chi == 1) 
+			return 36.9621415634; //desvio 
+		if (chi == 2) 
+			return 158.553656071; //desvio 
+	} 
+	if (amino == "LEU") 
+	{ 
+		if (chi == 1) 
+			return 34.5682963508; //desvio 
+		if (chi == 2) 
+			return 153.698511792; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+	if (amino == "ASP") 
+	{ 
+		if (chi == 1) 
+			return 35.1147016071; //desvio 
+		if (chi == 2) 
+			return 46.9696833523; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "ASN") 
+	{ 
+		if (chi == 1) 
+			return 36.4441026627; //desvio 
+		if (chi == 2) 
+			return 102.880467796; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+	if ((amino == "HIS") || (amino == "HID")) 
+	{ 
+		if (chi == 1) 
+			return 39.0133933155; //desvio 
+		if (chi == 2) 
+			return 134.60402174; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+	if (amino == "PHE") 
+	{ 
+		if (chi == 1) 
+			return 37.1915113716; //desvio 
+		if (chi == 2) 
+			return 90.4287241983; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+	if (amino == "TYR") 
+	{ 
+		if (chi == 1) 
+			return 40.6852813843; //desvio 
+		if (chi == 2) 
+			return 90.3311560257; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+	if (amino == "TRP") 
+	{ 
+		if (chi == 1) 
+			return 37.20027137; //desvio 
+		if (chi == 2) 
+			return 76.1667028199; //desvio 
+		if (chi == 3) 
+			return 0.0; 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "MET") 
+	{ 
+		if (chi == 1) 
+			return 38.6100110704; //desvio 
+		if (chi == 2) 
+			return 136.936043497; //desvio 
+		if (chi == 3) 
+			return 127.810330834; //desvio 
+		if (chi == 4) 
+			return 0.0; 
+	} 
+	if (amino == "GLU") 
+	{ 
+		if (chi == 1) 
+			return 36.0193373885; //desvio 
+		if (chi == 2) 
+			return 127.166599257; //desvio 
+		if (chi == 3) 
+			return 45.906672346; //desvio 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+
+	if (amino == "GLN") 
+	{ 
+		if (chi == 1) 
+			return 38.251731411; //desvio 
+		if (chi == 2) 
+			return 110.023298141; //desvio 
+		if (chi == 3) 
+			return 78.3524871589; //desvio 
+		if (chi == 4) 
+			return 0.0; 
+
+	} 
+
+	if (amino == "LYS") 
+	{ 
+		if (chi == 1) 
+			return 45.9834263916; //desvio 
+		if (chi == 2) 
+			return 107.881878471; //desvio 
+		if (chi == 3) 
+			return 109.224109583; //desvio 
+		if (chi == 4) 
+			return 109.224109583; //desvio 
+	} 
+	if (amino == "ARG") 
+	{ 
+		if (chi == 1) 
+			return 55.4581542333; //desvio 
+		if (chi == 2) 
+			return 135.482851533; //desvio 
+		if (chi == 3) 
+			return 95.5111419674; //desvio 
+		if (chi == 4) 
+			return 95.5111419674; //desvio 
+	} 
+	if ((amino == "PRO")||(amino == "ALA")||(amino == "GLY")) 
+	{ 
+		if (chi == 1) 
+			return 0.0; //media 
+		if (chi == 2) 
+			return 0.0; //media 
+		if (chi == 3) 
+			return 0.0; //media 
+		if (chi == 4) 
+			return 0.0; //media 
+	} 
+}; 
+
+int populate_currents(){
+
+	float    energy
+			,energy_min
+			,psi
+			,phi
+			,omega
+			,chi1
+			,chi2
+			,chi3
+			,chi4;
+
+	int  angle_index
+		,angle_position
+		,res_pos
+		,res_psi
+		,z;
+
+	string   sequence
+			,amino_str_id;
+
+	residue r;
+	molecule     protein
+				,mol_aux;
+
+	rseed();
+
+	sequence = SEQ_STRING;
+	protein = linkprot("A",sequence,"cneut");
+	putpdb( "00.pdb", protein);
+	//protein = getpdb_prm( "00.pdb", "leaprc.ff14SB", "", 0 );  
+
+	printf("Sequence: %s\n", sequence);
+
+	//initialize molCurrent
+	for(z = 0; z < 13; z++){
+		mol_ind[z*6] = getpdb_prm( "00.pdb", "leaprc.ff14SB", "", 0 );
+	}
+
+	for(z = 0; z < 13; z++){
+		printf("\nInit Current %d)\n", z);
+		res_pos = z*6*SEQ_SIZE*6;
+		//printf("%d \n",res_pos);
+		mol_aux = mol_ind[z*6];
+		position_ind[z*6] = res_pos;
+		//pockets
+		position_ind[z*6+1] = res_pos+SEQ_SIZE*6;
+		position_ind[z*6+2] = res_pos+SEQ_SIZE*6*2;
+		position_ind[z*6+3] = res_pos+SEQ_SIZE*6*3;
+		position_ind[z*6+4] = res_pos+SEQ_SIZE*6*4;
+		position_ind[z*6+5] = res_pos+SEQ_SIZE*6*5;
+		angle_position = 0;
+		angle_index = 0;
+		for(r in mol_aux){
+			psi = 0.0;
+			phi = 0.0;
+			omega = 180.0; // ???????
+			chi1 = 0.0;
+			chi2 = 0.0;
+			chi3 = 0.0;
+			chi4 = 0.0;
+			angle_index = seleang(posicaoaainverso(lettercode(r.resname)),retornaEstado(seqss[r.resnum]));
+			angle_position = (6*361*361*posicaoaa(posicaoaainverso(lettercode(r.resname))))+(361*361*retornaEstado(seqss[r.resnum]))+angle_index;
+			// //TEST
+			//printf("%d %d\n",angle_index,angle_position);
+			
+			phi = vetAngPhi[angle_position] + rand2();
+			psi = vetAngPsi[angle_position] + rand2();
+
+			chi1 = ranFlo(rotMIN(r.resname, 1),rotMAX(r.resname, 1));  
+			chi2 = ranFlo(rotMIN(r.resname, 2),rotMAX(r.resname, 2));
+			chi3 = ranFlo(rotMIN(r.resname, 3),rotMAX(r.resname, 3));
+			chi4 = ranFlo(rotMIN(r.resname, 4),rotMAX(r.resname, 4));
+
+			if ((r.resname == "SER")||(r.resname == "CYX")||(r.resname == "CYS")||(r.resname == "THR")||(r.resname == "VAL"))
+			{
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = 0.0;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+				 
+			if ((r.resname == "ILE")||(r.resname == "LEU")||(r.resname == "ASP")||(r.resname == "ASN")||(r.resname == "HIS")||(r.resname == "HID")||(r.resname == "PHE")||(r.resname == "TYR")||(r.resname == "TRP"))
+			{
+
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+			if ((r.resname == "MET")||(r.resname == "GLU")||(r.resname == "GLN"))
+			{
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = chi3;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+			if ((r.resname == "LYS")||(r.resname == "ARG"))
+			{
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = chi3;
+				mat_ind[res_pos+5] = chi4;
+			}
+
+			if ((r.resname == "PRO")||(r.resname == "ALA")||(r.resname == "GLY"))
+			{
+				mat_ind[res_pos+2] = 0.0;
+				mat_ind[res_pos+3] = 0.0;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+			mat_ind[res_pos+0] = phi;
+			mat_ind[res_pos+1] = psi;
+
+			res_psi = res_pos - 6;
+			
+			if(r.resnum != 1){
+				fix_angles(mol_aux,r.resnum,SEQ_SIZE, omega, mat_ind[res_psi+1], mat_ind[res_pos+0], r, mat_ind[res_pos+2], mat_ind[res_pos+3], mat_ind[res_pos+4],mat_ind[res_pos+5]);
+			}
+			//printf("%2d %s %s %s chi:%d \t phi:%12f\t psi:%12f\t chi1:%12f\t chi2:%12f\t chi3:%12f\t chi4:%12f\n",posicaoaa(convletra(r.resname)), convletra(r.resname), r.resname, seqss[r.resnum], retornaNumChi(posicaoaainverso(lettercode(r.resname))), mat_ind[res_pos+0],mat_ind[res_pos+1],mat_ind[res_pos+2],mat_ind[res_pos+3],mat_ind[res_pos+4],mat_ind[res_pos+5]);
+			res_pos = res_pos + 6;
+		}
+		
+		energy_ind[z*6] = calculate_energy( mol_aux, mol_aux);
+		mol_ind[z*6] = mol_aux;
+		//printf("%d)\tEnergy: %f\n",position_ind[z*6],energy_ind[z*6]);
+	//putpdb(sprintf("protein_predicted_sin_ls_%d.pdb",z*6), mol_ind[z*6]);
+	}
+	//printf("************** Energy MIN: %f *******************\n", energy_min);
+	return 0;
+};
+
+int test_position(int position){
+	
+	float energy_test;
+	float omega;
+	int res_pos;
+	molecule m_test;
+	residue r;
+	m_test = getpdb_prm( "00.pdb", "leaprc.ff14SB", "", 0 );
+	omega = 180.0;
+	energy_test= 0.0;
+	res_pos = position_ind[position];
+	printf("*******************************************TEST***************************************\n");
+	for(r in m_test){
+		if(r.resnum != 1)
+			fix_angles(m_test,r.resnum,SEQ_SIZE, omega, mat_ind[res_pos-6+1], mat_ind[res_pos+0], r, mat_ind[res_pos+2], mat_ind[res_pos+3], mat_ind[res_pos+4],mat_ind[res_pos+5]);
+		printf("%2d %s %s %s chi:%d \t phi:%12f\t psi:%12f\t chi1:%12f\t chi2:%12f\t chi3:%12f\t chi4:%12f\n",posicaoaa(convletra(r.resname)), convletra(r.resname), r.resname, seqss[r.resnum], retornaNumChi(posicaoaainverso(lettercode(r.resname))), mat_ind[res_pos+0],mat_ind[res_pos+1],mat_ind[res_pos+2],mat_ind[res_pos+3],mat_ind[res_pos+4],mat_ind[res_pos+5]);
+		res_pos = res_pos + 6;
+	}
+	energy_test = calculate_energy(m_test,m_test);
+	
+	printf("%d) %f %f\n", position_ind[position], energy_test, energy_ind[position]);
+	return 0;
+};
+
+float point_center(float coord){
+	int int_aux;
+	float float_aux;
+	int_aux = coord;
+	if( int_aux > 0){
+	float_aux = int_aux + 0.5;
+	}
+
+	if( int_aux < 0){
+	float_aux = int_aux - 0.5;
+	}
+	return float_aux;
+};
+
+float new_point(float coord){
+	rseed();
+	return point_center(coord)+rand2()-0.5;
+};
+
+int first_sort(int start, int end){
+	int i, j, middle, posaux; 
+	float pivot, aux;
+  	molecule molaux;
+	i = start;
+  	j = end;
+  	middle = ((i + j) / 2);
+	pivot = energy_ind[middle*6];
+	while(j > i){
+		
+		while (energy_ind[i*6] < pivot) {i = i + 1;}
+		while (energy_ind[j*6] > pivot) {j = j - 1;}     
+		if(i <= j){
+			molaux = mol_ind[i*6];
+     		aux = energy_ind[i*6];
+      		posaux = position_ind[i*6];
+
+	    	energy_ind[i*6] = energy_ind[j*6];
+      		mol_ind[i*6] = mol_ind[j*6];
+      		position_ind[i*6] = position_ind[j*6];
+
+	    	energy_ind[j*6] = aux;
+      		mol_ind[j*6] = molaux;
+      		position_ind[j*6] = posaux;
+
+			i = i + 1;
+			j = j - 1;
+		}
+	}
+	if(start < j) first_sort(start, j);
+	if(i < end) first_sort(i, end);
+	return 0;
+};
+
+int manhattan(float from_x, float from_y,float to_x, float to_y){
+	int int_x, int_y, distance;
+	int_x = fabs(from_x - to_x);
+	int_y = fabs(from_y - to_y);
+	if(int_x > int_y)
+		distance = int_x;
+	else
+		distance = int_y;
+	return distance;
+};
+
+int local_search(int position, float prob_ls, float prob_jump, float radius_jump){
+	float energy_best, energy_temp;
+	float bit, manhattan_aux;
+	float omega, phi, psi, chi1, chi2, chi3, chi4;
+	float backup_phi, backup_psi, backup_chi1, backup_chi2, backup_chi3, backup_chi4;
+	int pos_res, pos_psi;
+	int control;
+	int angle_index, angle_position;
+	residue r_temp;
+	molecule mol_ls;
+
+	mol_ls = mol_ind[position];
+	printf("\n");
+	for(r_temp in mol_ls){
+		if(r_temp.resnum != 1){
+			rseed();
+			if(rand2() <= prob_ls){
+				pos_res = position_ind[position] + (r_temp.resnum-1)*6;
+				pos_psi = position_ind[position] + (r_temp.resnum-2)*6;
+				control = 0;
+				omega = 180.0;
+				
+
+				if(rand2() <= prob_jump){
+					//JUMP
+					angle_index = seleang(posicaoaainverso(lettercode(r_temp.resname)),retornaEstado(seqss[r_temp.resnum]));
+					angle_position = (6*361*361*posicaoaa(posicaoaainverso(lettercode(r_temp.resname))))+(361*361*retornaEstado(seqss[r_temp.resnum]))+angle_index;
+					// //TEST
+					//printf("%d %d\n",angle_index,angle_position);
+					phi = vetAngPhi[angle_position] + rand2();
+					psi = vetAngPsi[angle_position] + rand2();
+
+					manhattan_aux = manhattan(mat_ind[pos_res + 0],mat_ind[pos_psi + 1],phi, psi);
+
+					if( manhattan_aux < radius_jump && radius_jump > 1.0){
+						printf("Jump from (%f,%f) to (%f,%f) with manhattan_axis_max: %f and jump_radius: %f\n",mat_ind[pos_res + 0],mat_ind[pos_psi + 1],phi,psi,manhattan_aux,radius_jump);
+						mat_ind[pos_res + 0] = phi;
+						mat_ind[pos_psi + 1] = psi;
+						fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, mat_ind[pos_res + 2], mat_ind[pos_res + 3], mat_ind[pos_res + 4], mat_ind[pos_res + 5]);
+						energy_ind[position] = calculate_energy(mol_ls,mol_ls);
+						mol_ind[position] = mol_ls;
+					}
+				}
+
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+
+				backup_phi = mat_ind[pos_res + 0];
+				backup_psi = mat_ind[pos_psi + 1];
+				backup_chi1 = mat_ind[pos_res + 2];
+				backup_chi2 = mat_ind[pos_res + 3];
+				backup_chi3 = mat_ind[pos_res + 4];
+				backup_chi4 = mat_ind[pos_res + 5];
+
+				//phi
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						phi = phi + bit;
+						if( (phi > point_center(backup_phi) - 0.5) && (phi < point_center(backup_phi) + 0.5) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_res + 0] = phi;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									phi = backup_phi;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										phi = mat_ind[pos_res + 0];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						phi = mat_ind[pos_res + 0];
+						phi = phi - bit;
+						if( (phi > point_center(backup_phi) - 0.5) && (phi < point_center(backup_phi) + 0.5) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_res + 0] = phi;
+								energy_ind[position] = energy_best;
+							}else{
+								phi = mat_ind[pos_res + 0];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+
+				//psi
+				control = 0;
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						psi = psi + bit;
+						if( (psi > point_center(backup_psi) - 0.5) && (psi < point_center(backup_psi) + 0.5) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_psi + 1] = psi;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									psi = backup_psi;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										psi = mat_ind[pos_psi + 1];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						psi = mat_ind[pos_psi + 1];
+						psi = psi - bit;
+						if( (psi > point_center(backup_psi) - 0.5) && (psi < point_center(backup_psi) + 0.5) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_psi + 1] = psi;
+								energy_ind[position] = energy_best;
+							}else{
+								psi = mat_ind[pos_psi + 1];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+
+				//chi1
+				control = 0;
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						chi1 = chi1 + bit;
+						if( (chi1 > rotMIN(r_temp.resname, 1)) && (chi1 < rotMAX(r_temp.resname, 1)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_res + 2] = chi1;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									chi1 = backup_chi1;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										chi1 = mat_ind[pos_res + 2];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						chi1 = mat_ind[pos_res + 2];
+						chi1 = chi1 - bit;
+						if( (chi1 > rotMIN(r_temp.resname, 1)) && (chi1 < rotMAX(r_temp.resname, 1)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_res + 2] = chi1;
+								energy_ind[position] = energy_best;
+							}else{
+								chi1 = mat_ind[pos_res + 2];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+
+				//chi2
+				control = 0;
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						chi2 = chi2 + bit;
+						if( (chi2 > rotMIN(r_temp.resname, 2)) && (chi2 < rotMAX(r_temp.resname, 2)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_res + 3] = chi2;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									chi2 = backup_chi2;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										chi2 = mat_ind[pos_res + 3];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						chi2 = mat_ind[pos_res + 3];
+						chi2 = chi2 - bit;
+						if( (chi2 > rotMIN(r_temp.resname, 2)) && (chi2 < rotMAX(r_temp.resname, 2)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_res + 3] = chi2;
+								energy_ind[position] = energy_best;
+							}else{
+								chi2 = mat_ind[pos_res + 3];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+
+				//chi3
+				control = 0;
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						chi3 = chi3 + bit;
+						if( (chi3 > rotMIN(r_temp.resname, 3)) && (chi3 < rotMAX(r_temp.resname, 3)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_res + 4] = chi3;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									chi3 = backup_chi3;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										chi3 = mat_ind[pos_res + 4];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						chi3 = mat_ind[pos_res + 4];
+						chi3 = chi3 - bit;
+						if( (chi3 > rotMIN(r_temp.resname, 3)) && (chi3 < rotMAX(r_temp.resname, 3)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_res + 4] = chi3;
+								energy_ind[position] = energy_best;
+							}else{
+								chi3 = mat_ind[pos_res + 4];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+
+				//chi3
+				control = 0;
+				energy_best = energy_ind[position];
+				energy_temp = energy_best;
+				while(control != 9991){
+					bit = rand2();
+
+					phi = mat_ind[pos_res + 0];
+					psi = mat_ind[pos_psi + 1];
+					chi1 = mat_ind[pos_res + 2];
+					chi2 = mat_ind[pos_res + 3];
+					chi3 = mat_ind[pos_res + 4];
+					chi4 = mat_ind[pos_res + 5];
+					omega = 180.0;
+
+					if ((r_temp.resname == "SER")||(r_temp.resname == "CYX")||(r_temp.resname == "CYS")||(r_temp.resname == "THR")||(r_temp.resname == "VAL"))
+					{
+						omega = 180.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}   
+					if ((r_temp.resname == "ILE")||(r_temp.resname == "LEU")||(r_temp.resname == "ASP")||(r_temp.resname == "ASN")||(r_temp.resname == "HIS")||(r_temp.resname == "HID")||(r_temp.resname == "PHE")||(r_temp.resname == "TYR")||(r_temp.resname == "TRP"))
+					{
+						omega = 180.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "MET")||(r_temp.resname == "GLU")||(r_temp.resname == "GLN"))
+					{
+						omega = 180.0; chi4 = 0.0; 
+					}
+					if ((r_temp.resname == "LYS")||(r_temp.resname == "ARG"))
+					{
+						omega = 180.0;
+					}
+					if ((r_temp.resname == "PRO")||(r_temp.resname == "ALA")||(r_temp.resname == "CYS"))
+					{
+						omega = 180.0; chi1 = 0.0; chi2 = 0.0; chi3 = 0.0; chi4 = 0.0; 
+					}
+
+					if(control <= 0){
+						chi4 = chi4 + bit;
+						if( (chi4 > rotMIN(r_temp.resname, 4)) && (chi4 < rotMAX(r_temp.resname, 4)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								energy_best = energy_temp;
+
+								mol_ind[position] = mol_ls;
+								energy_ind[position] = energy_best;
+								mat_ind[pos_res + 5] = chi4;
+								control = control - 1;
+							}else{
+								if(control == 0){
+									chi4 = backup_chi4;
+									fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+									control = 999;
+								}else{
+									if(control < 0){
+										chi4 = mat_ind[pos_res + 5];
+										fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+										control = 9991;
+									}
+								}
+							}
+						}else{
+							control = 999;
+						}
+					}
+
+					if(control == 999){
+						chi4 = mat_ind[pos_res + 5];
+						chi4 = chi4 - bit;
+						if( (chi4 > rotMIN(r_temp.resname, 4)) && (chi4 < rotMAX(r_temp.resname, 4)) ){
+							fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+							energy_temp = calculate_energy(mol_ls, mol_ls);
+							if(energy_temp < energy_best){
+								mol_ind[position] = mol_ls;
+								energy_best = energy_temp;
+								mat_ind[pos_res + 5] = chi4;
+								energy_ind[position] = energy_best;
+							}else{
+								chi4 = mat_ind[pos_res + 5];
+								fix_angles(mol_ls,r_temp.resnum,mol_ls.nresidues, omega, psi, phi,r_temp, chi1, chi2, chi3, chi4);
+								control = 9991;
+							}
+						}else{
+							control = 9991;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return 0;
+};
+
+int random_local_search(int position){
+	
+	float energy_actual, energy_old, energy_aux;
+	float phi, psi, omega, chi1, chi2, chi3, chi4;
+	float coin;
+	float one_ind[84];
+	int aux_pos;
+	int res_pos;
+	int res_psi;
+	int i;
+	int angle_index;
+	int angle_position;
+	molecule prueba;
+	residue r;
+
+	omega = 180.0;
+	prueba = mol_ind[position];
+	res_pos = position_ind[position];
+	energy_aux = calculate_energy(prueba,prueba);
+	energy_old = energy_aux;
+
+	for(r in prueba){
+		aux_pos = res_pos + (r.resnum-1)*6;
+		res_psi = res_pos + (r.resnum-2)*6;
+		if(r.resnum != 1){
+			//printf("************* Residuo Nº %d *****************\n",r.resnum);
+			//printf("phi: %12f\t psi:%12f\t energy: %12f\t\n",mat_ind[aux_pos+0],mat_ind[aux_pos+1],energy_old);
+			for(i=0; i < LS_ITERATIONS; i++){
+				phi = new_point(mat_ind[aux_pos+0]);
+				psi = new_point(mat_ind[res_psi+1]);
+				// chi1 = mat_ind[aux_pos+2];
+				// chi2 = mat_ind[aux_pos+3];
+				// chi3 = mat_ind[aux_pos+4];
+				// chi4 = mat_ind[aux_pos+5];
+				// if(r.resnum+1 < 15){
+				//    if(seqss[r.resnum+1] == "E" && seqss[r.resnum+1] == "T"){
+				//     angle_index = seleang(posicaoaainverso(lettercode(r.resname)),retornaEstado(seqss[r.resnum]));
+				//     angle_position = (6*361*361*posicaoaa(posicaoaainverso(lettercode(r.resname))))+(361*361*retornaEstado(seqss[r.resnum]))+angle_index;
+					
+				//     phi = new_point(vetAngPhi[angle_position]);
+				//     psi = new_point(vetAngPsi[angle_position]);  
+				//   }
+				// }
+				 
+
+				chi1 = ranFlo(rotMIN(r.resname, 1),rotMAX(r.resname, 1));  
+				chi2 = ranFlo(rotMIN(r.resname, 2),rotMAX(r.resname, 2));
+				chi3 = ranFlo(rotMIN(r.resname, 3),rotMAX(r.resname, 3));
+				chi4 = ranFlo(rotMIN(r.resname, 4),rotMAX(r.resname, 4));
+
+				if ((r.resname == "SER")||(r.resname == "CYX")||(r.resname == "CYS")||(r.resname == "THR")||(r.resname == "VAL"))
+				{
+					chi2 = 0.0;
+					chi3 = 0.0;
+					chi4 = 0.0;
+				}
+				 
+				if ((r.resname == "ILE")||(r.resname == "LEU")||(r.resname == "ASP")||(r.resname == "ASN")||(r.resname == "HIS")||(r.resname == "HID")||(r.resname == "PHE")||(r.resname == "TYR")||(r.resname == "TRP"))
+				{
+					chi3 = 0.0;
+					chi4 = 0.0;
+				}
+
+				if ((r.resname == "MET")||(r.resname == "GLU")||(r.resname == "GLN"))
+				{
+					chi4 = 0.0;
+				}
+
+				if ((r.resname == "PRO")||(r.resname == "ALA")||(r.resname == "GLY"))
+				{
+					chi1 = 0.0;
+					chi2 = 0.0;
+					chi3 = 0.0;
+					chi4 = 0.0;
+				}
+
+				fix_angles(prueba,r.resnum,prueba.nresidues, omega, psi, phi, r, chi1, chi2, chi3, chi4);
+				energy_aux = calculate_energy(prueba,prueba);
+				//printf("phi: %12f\t psi:%12f\t fixphi: %12f\t fixpsi: %12f\t energy: %12f\t\n",mat_ind[aux_pos+0],mat_ind[aux_pos+1],phi,psi,energy_aux);
+				if(energy_aux < energy_old){
+					energy_old = energy_aux;
+					mat_ind[aux_pos+0] = phi;
+					mat_ind[res_psi+1] = psi;
+					mat_ind[aux_pos+2] = chi1;
+					mat_ind[aux_pos+3] = chi2;
+					mat_ind[aux_pos+4] = chi3;
+					mat_ind[aux_pos+5] = chi4;
+					mol_ind[position] = prueba;
+					energy_ind[position] = energy_old;
+				}else{
+					//restore
+					fix_angles(prueba,r.resnum,SEQ_SIZE, omega, mat_ind[res_psi+1], mat_ind[aux_pos+0], r, mat_ind[aux_pos+2], mat_ind[aux_pos+3], mat_ind[aux_pos+4], mat_ind[aux_pos+5]);
+				}
+			}
+			//printf("phi: %12f\t psi:%12f\t new energy: %12f\t\n",mat_ind[aux_pos+0],mat_ind[aux_pos+1],energy_old);
+		}
+		//printf("phi: %12f\t psi:%12f\t fixphi: %12f\t fixpsi: %12f\t\n",mat_ind[aux_pos+0],mat_ind[aux_pos+1],new_point(mat_ind[aux_pos+0]),new_point(mat_ind[aux_pos+1]));
+	}
+	return 0;
+};
+
+float diversity_ind(int solnum_a, int solnum_b){
+	int i,j;
+	float aux;
+	int pos_a, pos_b;
+
+	pos_a = position_ind[solnum_a];
+	pos_b = position_ind[solnum_b];
+
+	aux = 0;
+	for(i = 0; i < SEQ_SIZE; i++){
+		//cambiar por 6 en caso de comparar los 6 ángulos y no solo 2 (psi, phi)
+		for(j = 0; j < 2; j++){
+			aux = aux + fabs(mat_ind[pos_a+i*6+j] - mat_ind[pos_b+i*6+j]);
+			//printf("%12f - %12f = %12f \n",mat_ind[pos_a+i*6+j] ,mat_ind[pos_b+i*6+j], fabs(mat_ind[pos_a+i*6+j] - mat_ind[pos_b+i*6+j]) );
+		}
+	}
+	//printf("Diversity: %12f\n\n", aux/SEQ_SIZE);
+	return aux/SEQ_SIZE;
+};
+
+int pocket_sort(int start, int end){
+  int i, j, middle, posaux; 
+  float pivot, aux;
+  molecule molaux;
+  i = start;
+  j = end;
+  middle = ((i + j) / 2);
+  pivot = energy_ind[middle];
+  while(j > i){
+    while (energy_ind[i] < pivot) {i = i + 1;}
+    while (energy_ind[j] > pivot) {j = j - 1;}     
+    if(i <= j){
+      molaux = mol_ind[i];
+      aux = energy_ind[i];
+      posaux = position_ind[i];
+
+      energy_ind[i] = energy_ind[j];
+      mol_ind[i] = mol_ind[j];
+      position_ind[i] = position_ind[j];
+
+      energy_ind[j] = aux;
+      mol_ind[j] = molaux;
+      position_ind[j] = posaux;
+
+      i = i + 1;
+      j = j - 1;
+    }
+  }
+  if(start < j) {pocket_sort(start, j);}
+  if(i < end) {pocket_sort(i, end);}
+  return 0; 
+};
+
+int copyInd(int pos_from, int pos_to){
+  int z;
+  for(z = 0; z < SEQ_SIZE*6; z++){
+    mat_ind[pos_to+z] = mat_ind[pos_from + z];
+    //printf("%f %f\n", mat_ind[pos_to+z],mat_ind[pos_from+z] );
+  }
+  return 0;
+};
+
+int swappockets(int pocket_a, int pocket_b){
+  int posaux_a;
+  int posaux_b;
+  molecule molaux;
+  float energyaux;
+
+  posaux_a = position_ind[pocket_a];
+  posaux_b = position_ind[pocket_b];
+
+  position_ind[pocket_a] = posaux_b;
+  position_ind[pocket_b] = posaux_a;
+
+  molaux = mol_ind[pocket_a];
+  mol_ind[pocket_a] = mol_ind[pocket_b];
+  mol_ind[pocket_b] = molaux;
+
+  energyaux = energy_ind[pocket_a];
+  energy_ind[pocket_a] = energy_ind[pocket_b];
+  energy_ind[pocket_b] = energyaux;
+
+  return 0;
+};
+
+int crossover(int sol_a, int sol_b, float prob, int sol_save){
+	residue r;
+	int pos_a, pos_b, pos_save;
+	molecule mol_save;
+	float omega;
+	mol_save = mol_ind[sol_save];
+	omega = 180.0;
+
+	//printf("Actual Energy:  %f\n", energy_ind[sol_save]);
+
+	for(r in mol_save){
+		rseed();
+		pos_a = position_ind[sol_a] + (r.resnum-1)*6;
+		pos_b = position_ind[sol_b] + (r.resnum-1)*6;
+		pos_save = position_ind[sol_save] + (r.resnum-1)*6;
+		if(rand2() <= prob){
+			mat_ind[pos_save] = mat_ind[pos_a];
+			mat_ind[pos_save+1] = mat_ind[pos_a+1];
+			mat_ind[pos_save+2] = mat_ind[pos_a+2];
+			mat_ind[pos_save+3] = mat_ind[pos_a+3];
+			mat_ind[pos_save+4] = mat_ind[pos_a+4];
+			mat_ind[pos_save+5] = mat_ind[pos_a+5];  
+		}else{
+			mat_ind[pos_save] = mat_ind[pos_b];
+			mat_ind[pos_save+1] = mat_ind[pos_b+1];
+			mat_ind[pos_save+2] = mat_ind[pos_b+2];
+			mat_ind[pos_save+3] = mat_ind[pos_b+3];
+			mat_ind[pos_save+4] = mat_ind[pos_b+4];
+			mat_ind[pos_save+5] = mat_ind[pos_b+5];
+		}
+
+		if(r.resnum != 1) {
+			fix_angles(mol_save,r.resnum,SEQ_SIZE, omega, mat_ind[pos_save-6+1], mat_ind[pos_save+0], r, mat_ind[pos_save+2], mat_ind[pos_save+3], mat_ind[pos_save+4],mat_ind[pos_save+5]);
+		}
+	}
+	energy_ind[sol_save] = calculate_energy(mol_save,mol_save);
+	mol_ind[sol_save] = mol_save;
+
+	//printf("New Energy:  %f\n", energy_ind[sol_save]);
+	return 0;
+};
+
+int show_data_population(){
+	int i;
+	for(i = 0; i < 78; i++){
+		if(i % 6 != 0){
+			if(pocket_filled[i] == 1){
+				printf("Pocket  %2d) %25f\n",i%6, energy_ind[i]);
+			}else{
+				printf("Pocket  %2d) empty\n",i%6);	
+			}
+		}
+		else{
+			printf("\nCurrent %2d) %25f\n",i/6, energy_ind[i]);
+		}
+	}
+	return 0;
+};
+
+int update_population(){
+
+	float energycurrent,energychild,energyparent;
+	int pocketworst,pocketchild;
+	int z, pocket_counter;
+	int flag_empty;
+	int flag_diversity;
+	float diversity_temp;
+
+	printf("\n----- POP STATUS -----\n");
+	show_data_population();
+
+	//first step
+	for(w = 0; w < 13; w++){
+		diversity_temp = 0.0;
+		energycurrent = energy_ind[w*6];
+		pocketworst = -1;
+		flag_empty = 1;
+		flag_diversity = 1;
+		for(z = 1; z <= 5; z++){
+			if(pocket_filled[w*6 + z] == 0){ //si no hay pocket en esa posición
+				if(flag_empty == 1){ //revisamos que no existan posiciones vacias anteriores
+					pocketworst = z;
+					flag_empty = 0;	//se avisa que ya se encontró una posición vacía
+				}
+			}else{ //si hay un pocket
+				diversity_temp = diversity_ind(w*6, w*6 + z); //obtengo sus diferencias
+				if(diversity_temp != 0){ //si no son iguales
+					if(diversity_temp > DIVERSITY){ //si son diversos
+						if(energycurrent < energy_ind[w*6 + z] && flag_diversity == 1){
+							pocketworst = z;
+						}
+					}else{
+						if(energycurrent < energy_ind[w*6 + z]){
+							pocketworst = z;
+							flag_diversity = 0;
+							flag_empty = 0;
+						}
+					}
+				}
+			}
+		}
+
+		if(pocketworst != -1){
+			energy_ind[6*w+pocketworst] = energycurrent;
+			mol_ind[6*w+pocketworst] = mol_ind[6*w];
+			copyInd(position_ind[w*6],position_ind[w*6+pocketworst]);
+			pocket_filled[6*w+pocketworst] = 1;
+		}
+	}
+	for(w = 0; w < 13; w++){
+		pocket_counter = 0;
+		for(z = 1; z <= 5; z++){
+			pocket_counter += pocket_filled[w*6+z];
+		}
+		if(pocket_counter > 1){
+			pocket_sort(6*w+1,6*w+pocket_counter);	
+		}
+	}
+	printf("\n----- STEP 1 -----\n");
+	show_data_population();
+
+	//second step  
+	for(w = 1; w < 4; w ++){
+		energyparent = energy_ind[w*6+1];
+		pocketchild = -1;
+		for (y = 3*w+1; y < 3*w+4; y++){
+			if( energyparent > energy_ind[6*y+1] ){
+				energyparent = energy_ind[6*y+1];
+				pocketchild = 6*y+1;
+			}
+		}
+		if(pocketchild != -1){
+			swappockets(w*6,pocketchild-1); //swap currents
+			swappockets(w*6+1,pocketchild); //swap best pockets
+		}
+	}
+	printf("\n----- STEP 2 -----\n");
+	show_data_population();
+
+	//third step
+	energyparent = energy_ind[1];
+	pocketchild = -1;
+	for(w = 1; w < 4; w++){
+		if( energyparent > energy_ind[6*w+1] ){
+			pocketchild = 6*w+1;
+			energyparent = energy_ind[6*w+1];
+		}
+	}
+	if(pocketchild != -1){
+		swappockets(0,pocketchild-1);
+		swappockets(1,pocketchild);
+	}
+
+	// if(energy_ind[1] < energy_ind[0]){
+	// 	copyInd(position_ind[1],position_ind[0]);
+	// 	energy_ind[0] = energy_ind[1];
+	// 	mol_ind[0] = mol_ind[1];
+	// }
+
+	printf("\n----- STEP 3 -----\n");
+	show_data_population();
+
+	return 0;
+};
+
+int new_random_sol(int sol_num){
+	float    energy
+			,energy_min
+			,psi
+			,phi
+			,omega
+			,chi1
+			,chi2
+			,chi3
+			,chi4;
+
+	int  angle_index
+		,angle_position
+		,res_pos
+		,z;
+
+	string   sequence
+			,amino_str_id;
+
+	residue r;
+	molecule     protein
+				,mol_aux;
+
+	rseed();
+	
+	res_pos = position_ind[sol_num];
+	mol_aux = mol_ind[sol_num];
+
+	for(r in mol_aux){
+		psi = 0.0;
+		phi = 0.0;
+		omega = 180.0;
+		chi1 = 0.0;
+		chi2 = 0.0;
+		chi3 = 0.0;
+		chi4 = 0.0;
+
+		angle_index = seleang(posicaoaainverso(lettercode(r.resname)),retornaEstado(seqss[r.resnum]));
+		angle_position = (6*361*361*posicaoaa(posicaoaainverso(lettercode(r.resname))))+(361*361*retornaEstado(seqss[r.resnum]))+angle_index;
+		
+		phi = vetAngPhi[angle_position] + rand2();
+		psi = vetAngPsi[angle_position] + rand2();
+
+		chi1 = ranFlo(rotMIN(r.resname, 1),rotMAX(r.resname, 1));  
+		chi2 = ranFlo(rotMIN(r.resname, 2),rotMAX(r.resname, 2));
+		chi3 = ranFlo(rotMIN(r.resname, 3),rotMAX(r.resname, 3));
+		chi4 = ranFlo(rotMIN(r.resname, 4),rotMAX(r.resname, 4));
+
+		if ((r.resname == "SER")||(r.resname == "CYX")||(r.resname == "CYS")||(r.resname == "THR")||(r.resname == "VAL"))
+			{
+				mat_ind[res_pos+0] = phi;
+				mat_ind[res_pos+1] = psi;
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = 0.0;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+			 
+			if ((r.resname == "ILE")||(r.resname == "LEU")||(r.resname == "ASP")||(r.resname == "ASN")||(r.resname == "HIS")||(r.resname == "HID")||(r.resname == "PHE")||(r.resname == "TYR")||(r.resname == "TRP"))
+			{
+
+				mat_ind[res_pos+0] = phi;
+				mat_ind[res_pos+1] = psi;
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+			if ((r.resname == "MET")||(r.resname == "GLU")||(r.resname == "GLN"))
+			{
+				mat_ind[res_pos+0] = phi;
+				mat_ind[res_pos+1] = psi;
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = chi3;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+			if ((r.resname == "LYS")||(r.resname == "ARG"))
+			{
+				mat_ind[res_pos+0] = phi;
+				mat_ind[res_pos+1] = psi;
+				mat_ind[res_pos+2] = chi1;
+				mat_ind[res_pos+3] = chi2;
+				mat_ind[res_pos+4] = chi3;
+				mat_ind[res_pos+5] = chi4;
+			}
+			if ((r.resname == "PRO")||(r.resname == "ALA")||(r.resname == "GLY"))
+			{
+				mat_ind[res_pos+0] = phi;
+				mat_ind[res_pos+1] = psi;
+				mat_ind[res_pos+2] = 0.0;
+				mat_ind[res_pos+3] = 0.0;
+				mat_ind[res_pos+4] = 0.0;
+				mat_ind[res_pos+5] = 0.0;
+			}
+
+		if(r.resnum != 1)
+			fix_angles(mol_aux,r.resnum,SEQ_SIZE, omega, mat_ind[res_pos-6+1], mat_ind[res_pos+0], r, mat_ind[res_pos+2], mat_ind[res_pos+3], mat_ind[res_pos+4],mat_ind[res_pos+5]);
+		res_pos = res_pos + 6;
+	}
+	energy_ind[sol_num] = calculate_energy( mol_aux, mol_aux);
+	mol_ind[sol_num] = mol_aux;
+	return 0;
+};
+
+int show_diversity(){
+	int i,j,pos;
+	float div_agent, div_aux;
+	for(i = 0; i < 13; i++){
+		div_agent = 0.0;
+		printf("\nAgent: %2d\n", i);
+
+		for(j = 2; j <= 5; j++){
+			div_aux = 0.0;
+			if(pocket_filled[i*6+j] == 1){
+				div_aux = diversity_ind(i*6+1,i*6+j);
+				div_agent += div_aux;
+				printf("Diversity %2d - %2d: %f\n", i*6+1,i*6+j, div_aux);
+			}
+		}
+		// div_agent /= 4.0;
+		// printf("\tAverage diversity Agent %2d: %f\n",i,div_agent);
+	}
+	return 0;
+};
+
+int is_pop_diversity(){
+
+	return 1;
+};
+
+int mutation(int sol, float prob, float rang){
+  int pos_sol;
+  float omega,r2;
+  molecule mol_mut;
+  residue r;
+
+  pos_sol = position_ind[sol];
+  mol_mut = mol_ind[sol];
+  omega = 180.0;
+
+  //printf("%s %f\n","Energy",energy_ind[sol] );
+
+  for(r in mol_mut){
+    //printf("%f\n", ranFlo(-0.01,0.01) );
+    rseed();
+    r2 = rand2();
+    if(r.resnum != 1){
+    //printf("%f\n", r2);
+   	//printf("%f < %f\n", r2,prob);
+      if(r2 < prob) {
+        //psi
+        mat_ind[(r.resnum-1)*6+1] = mat_ind[(r.resnum-1)*6+1] + ranFlo(rang*-1,rang); 
+        
+        //phi
+        mat_ind[(r.resnum-1)*6+0] = mat_ind[(r.resnum-1)*6+0] + ranFlo(rang*-1,rang);
+        
+        //chi1      
+        mat_ind[(r.resnum-1)*6+2] = mat_ind[(r.resnum-1)*6+2] + ranFlo(rang*-1,rang);
+        
+        //chi2      
+        mat_ind[(r.resnum-1)*6+3] = mat_ind[(r.resnum-1)*6+3] + ranFlo(rang*-1,rang);
+        
+        //chi3      
+        mat_ind[(r.resnum-1)*6+4] = mat_ind[pos_sol+4] + ranFlo(rang*-1,rang);
+        
+        //chi4      
+        mat_ind[(r.resnum-1)*6+5] = mat_ind[(r.resnum-1)*6+5] + ranFlo(rang*-1,rang);
+      }
+      if ((r.resname == "SER")||(r.resname == "CYX")||(r.resname == "CYS")||(r.resname == "THR")||(r.resname == "VAL"))
+      {
+        mat_ind[(r.resnum-1)*6+3] = 0.0;
+        mat_ind[(r.resnum-1)*6+4] = 0.0;
+        mat_ind[(r.resnum-1)*6+5] = 0.0;
+      }
+       
+      if ((r.resname == "ILE")||(r.resname == "LEU")||(r.resname == "ASP")||(r.resname == "ASN")||(r.resname == "HIS")||(r.resname == "HID")||(r.resname == "PHE")||(r.resname == "TYR")||(r.resname == "TRP"))
+      {
+        mat_ind[(r.resnum-1)*6+4] = 0.0;
+        mat_ind[(r.resnum-1)*6+5] = 0.0;
+      }
+
+      if ((r.resname == "MET")||(r.resname == "GLU")||(r.resname == "GLN"))
+      {
+        mat_ind[(r.resnum-1)*6+5] = 0.0;
+      }
+
+      if ((r.resname == "PRO")||(r.resname == "ALA")||(r.resname == "GLY"))
+      {
+        mat_ind[(r.resnum-1)*6+2] = 0.0;
+        mat_ind[(r.resnum-1)*6+3] = 0.0;
+        mat_ind[(r.resnum-1)*6+4] = 0.0;
+        mat_ind[(r.resnum-1)*6+5] = 0.0;
+      }  
+      fix_angles(mol_mut,r.resnum,SEQ_SIZE, omega, mat_ind[(r.resnum-2)*6+1], mat_ind[(r.resnum-1)*6+0], r, mat_ind[(r.resnum-1)*6+2], mat_ind[(r.resnum-1)*6+3], mat_ind[(r.resnum-1)*6+4],mat_ind[(r.resnum-1)*6+5]);
+    } 
+  }
+  energy_ind[sol] = calculate_energy(mol_mut,mol_mut);
+  mol_ind[sol] = mol_mut;
+  //printf("%s %f\n","Mutated energy",energy_ind[sol] );
+  return 0;
+};
+
+int memetic(){
+
+	int age, repopulates;
+
+	int pos_temp;
+	molecule mol_temp;
+	residue r_temp;
+
+	int  i
+		,w
+		,noimprove_gens
+		,flag_diversity;
+
+	float 	 last_energy
+			,jump_radius_aux;
+
+	carregass(SEQ_SECSTRUCT);
+	// //TEST
+	// for(i = 1; i <= SEQ_SIZE; i++){
+	//  printf("%s %d\n", seqss[i], retornaEstado(seqss[i]) );
+	// }
+
+	read_histograms();
+	// TEST
+	//show_rand_angle_per_comb();
+	t_inicial = getusertime();
+	populate_currents();
+
+	printf("\n --------- First population --------- \n");
+	for(i = 0; i < 13; i++){
+		printf("Current %2d) %20f\n",i, energy_ind[i*6]);
+		// // TEST
+		// printf("%10s %15s %15s\n","Residue","PHI","PSI");
+		// mol_temp = mol_ind[i*6];
+		// for(r_temp in mol_temp){
+		// 	pos_temp = position_ind[i*6] + (r_temp.resnum-1)*6;
+		// 	printf("%10s %15f %15f\n",r_temp.resname,mat_ind[pos_temp+0],mat_ind[pos_temp+1]);
+		// }
+		// putpdb(sprintf("currents/init_current_%d.pdb",i), mol_ind[i*6]);
+	}
+	
+	printf("\n --------- Random Local Search --------- \n");
+	for(i = 0; i < 13; i++){
+		random_local_search(i*6);
+		printf("Current %2d) %20f\n",i, energy_ind[i*6]);
+		// // TEST
+		// printf("%10s %15s %15s\n","Residue","PHI","PSI");
+		// mol_temp = mol_ind[i*6];
+		// for(r_temp in mol_temp){
+		// 	pos_temp = position_ind[i*6] + (r_temp.resnum-1)*6;
+		// 	printf("%10s %15f %15f\n",r_temp.resname,mat_ind[pos_temp+0],mat_ind[pos_temp+1]);
+		// }
+		// putpdb(sprintf("currents/ls_current_%d.pdb",i), mol_ind[i*6]);
+	}
+
+	printf("\n --------- Update Population --------- \n");
+	update_population();
+
+	age = 0;
+	repopulates = 0;
+	noimprove_gens = 0;
+	flag_diversity = 1;
+	jump_radius_aux = JUMP_RADIUS;
+	last_energy = energy_ind[1];
+	//while(i <= MAX_GENS && (getusertime()-t_inicial <= MAX_SECS)){
+	while(getusertime()-t_inicial <= MAX_SECS){
+		printf("\n --------- --------- Generation %3d --------- --------- \n",age);
+		printf("\n --------- Crossover --------- \n");
+
+		for(i = 1; i < 4; i++){
+			crossover(1,6*i+1,CROSSOVER,6*i);
+			// //TEST
+			// printf("%10s %15s %15s\n","Residue","PHI","PSI");
+			// mol_temp = mol_ind[i*6];
+			// for(r_temp in mol_temp){
+			// 	pos_temp = position_ind[i*6] + (r_temp.resnum-1)*6;
+			// 	printf("%10s %15f %15f\n",r_temp.resname,mat_ind[pos_temp+0],mat_ind[pos_temp+1]);
+			// }
+			// putpdb(sprintf("currents/crossover_current_%d.pdb",i), mol_ind[i*6]);
+		}
+		for(w = 1; w < 4; w ++){
+			for (y = 3*w+1; y < 3*w+4; y++){
+				crossover(6*w+1,6*y+1,CROSSOVER,6*y);	
+			}
+		} 
+
+		for(w = 0; w < 13; w++){
+			printf("Current %2d) %20f\n",w, energy_ind[w*6]);
+			//printf("Pocket  %2d) %20f\n\n",1, energy_ind[w*6+1]);
+		}
+
+		printf("\n --------- Local Search --------- \n");
+		for(i = 0; i < 13; i++){
+			local_search(i*6,LS_PROB,JUMP_PROB,jump_radius_aux);
+			printf("Current %2d) %20f\n",i, energy_ind[i*6]);
+			// TEST
+			// printf("%10s %15s %15s\n","Residue","PHI","PSI");
+			// mol_temp = mol_ind[i*6];
+			// for(r_temp in mol_temp){
+			// 	pos_temp = position_ind[i*6] + (r_temp.resnum-1)*6;
+			// 	printf("%10s %15f %15f\n",r_temp.resname,mat_ind[pos_temp+0],mat_ind[pos_temp+1]);
+			// }
+			// putpdb(sprintf("currents/ls_current_%d.pdb",i), mol_ind[i*6]);
+		}
+		jump_radius_aux = jump_radius_aux * JUMP_FACTOR;
+		age = age + 1;
+
+		printf("\n --------- Update Population --------- \n");
+		update_population();
+		if(last_energy == energy_ind[1]){
+			noimprove_gens = noimprove_gens + 1;
+		}else{
+			noimprove_gens = 0;
+		}
+		if(noimprove_gens == MAX_GENS_NOIMPROVE){
+			jump_radius_aux = JUMP_RADIUS/2;
+			noimprove_gens = 0;
+			repopulates = repopulates + 1;
+			for(i = 0; i < 13; i++){
+				printf("\n --------- Repopulate Population --------- \n");
+				pocket_filled[6*i+4] = 0;
+				pocket_filled[6*i+5] = 0;
+				new_random_sol(6*i);
+				random_local_search(i*6);
+				printf("Current %2d) %20f\n",i, energy_ind[i*6]);
+			}
+		}
+	}
+	t_final = getusertime()-t_inicial;
+	//Save PDBs
+	printf("Saving pockets in PDB Format... ");
+	for(w=0; w<POP_SIZE; w++){
+		if( w%6 != 0){
+			if (pocket_filled[w] == 1){
+				putpdb(sprintf("run_%d/pocket_%d_%d.pdb",RUN,w/6,w%6), mol_ind[w]);  
+			}
+		}
+	}
+	printf("Done\n");
+
+	printf("\n ************ Summary ********** \n");
+	printf(" Protein ID          : %s \n",PROTEIN_ID);
+	printf(" Total of Generations: %d \n",age);
+	printf(" Total of Repopulates: %d \n",repopulates);
+	printf(" Lowest Energy Found : %f \n", energy_ind[1]);
+	printf(" Total time: %f\n",t_final);
+
+	return 0;
+};
+
+memetic();

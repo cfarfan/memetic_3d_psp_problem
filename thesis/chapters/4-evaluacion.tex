@@ -1,0 +1,148 @@
+\chapter{Criterios de evaluación y experimentos}
+\label{cap:criterios}
+
+En el presente capítulo se aborda el plan de experimentación y criterios de evaluación que se aplican a los resultados en el capítulo \ref{cap:resultados}.
+
+\section{Diseño de experimentos}
+
+\subsection{Plan de Pruebas}
+Debido a que la solución desarrollada es de naturaleza estocástica, se requiere ejecutar múltiples instancias para una misma proteína con el fin de evaluar el comportamiento general del algoritmo. Para ello se ha decidido correr 10 ejecuciones de 24 horas por cada proteína. Las proteínas y cantidad de residuos se pueden ver en la tabla \ref{table:lista-proteinas}. Además, con el fin de verificar la contribución de las APLs al MA se decidió realizar el mismo plan de pruebas pero sin incorporar esta información. Para ello, todas las secciones del MA que piden información a las APLs fueron reemplazadas por una función que devuelve un valor flotante aleatorio entre $-180^\circ$ y $180^\circ$.
+
+\begin{table}[h]
+	\centering
+	\caption{Proteínas de prueba}
+	\begin{tabular}{|c|c|}
+		\hline
+		\textbf{PDB ID } & \textbf{Cantidad de residuos} \\ \hline
+		2EVQ 	& 12		\\		
+		1DV0 	& 45		\\ 	
+		1DEP 	& 15		\\  
+		1E0Q 	& 17		\\ 	
+		1K43 	& 14		\\ 
+		1L2Y 	& 20		\\		\hline
+	\end{tabular}
+	\label{table:lista-proteinas}
+\end{table}
+
+Para la ejecución de instancias se usó 8 computadores idénticos modelo HP EliteDesk 800-G1-SFF cuyas características principales son:
+\begin{itemize}
+	\item CPU Intel Core i7 3.4Ghz de 8 núcleos físicos.
+	\item 8Gb de RAM.
+	\item Unidad de almacenamiento SSD de 120Gb.
+\end{itemize}
+
+Por lo tanto, los equipos en su totalidad pueden correr hasta 80 ejecuciones en paralelo. Como se tienen 6 proteínas de prueba y 10 ejecuciones de 24 horas por cada una, se obtienen 1440 horas de ejecución que al dividirlo por la cantidad de núcleos disponibles da un total de 22.5 horas continuas de ejecución.
+
+\begin{equation}
+	\frac{6\text{proteínas}{\times}10\text{ejecuciones}{\times}24\text{horas}}{80\text{núcleos}} = 22.5\text{horas}
+\end{equation}
+
+Esta cantidad de horas es la misma para el plan de pruebas que no considera las APLs en el MA. Por lo tanto, los experimentos que involucran estas 6 proteínas toman 2 días de ejecución.
+
+También, solo con el fin de ver como se comporta el MA con proteínas más extensas, se decidió probar 9 proteínas (ver tabla \ref{table:prot-ext}) ejecutando una instancia del MA por cada una de ellas, cada instancia toma 72 horas. Para esta prueba se usó el recurso Bioserver disponible en el Departamento de Ingeniería Informática de la Universidad de Santiago, cuya configuración es:
+
+\begin{itemize}
+\item Procesador Intel Xeon E5-2609 (10M Caché, 2.40 GHz)
+\item Memoria RAM DDR3 de 16GB
+\end{itemize}
+
+
+\begin{table}[h]
+	\centering
+	\caption{Proteínas extensas de prueba}
+	\begin{tabular}{|c|c|}
+		\hline
+		\textbf{PDB ID} & \textbf{Cantidad de residuos} \\ \hline
+		 2F4K & 35\\
+         2JUC & 59\\
+         2MR9 & 44\\
+         2P5K & 64\\
+         2P81 & 44\\
+         3P7K & 45\\
+         3V1A & 43\\
+         2MQ8 & 112\\
+         2MW1 & 119\\ \hline
+	\end{tabular}
+	\label{table:prot-ext}
+\end{table}
+
+\subsection{Herramientas utilizadas en la implementación}
+
+\subsubsection{AmberTools 14}
+\textit{AmberTools} es un conjunto de programas destinados para la simulación y análisis biomolecular (\citealp{amber14}). Cada aplicación de este paquete ha sido diseñado para que pueda trabajar con los demás. La mayoría de los componentes de AmberTools está distribuido bajo licencia \textit{GNU General Public License (GPL)}. Este paquete contiene un lenguaje de programación especial para realizar simulaciones conocido como \textit{\textbf{NAB (Nucleotic Acid Builder) Language}} permitiendo usar distintos campos de fuerza dependiendo del tipo de simulación. Debido a esta ventaja, se ha decido usar esta suite para construir la solución. 
+
+\subsubsection{Lenguaje de programación NAB}
+NAB fue originalmente diseñado como un lenguaje de modelación pequeño con el objetivo principal de construir modelos no helicoidales de ácidos nucléicos. Con el éxito del proyecto, se agregó a su implementación el campo de fuerza de Amber \textit{(Amber Force Field o AMBER14FF, \citealp{simmer})}. 
+
+NAB provee soporte especializado en su lenguaje para el uso de macromoléculas y sus componentes, lo que da flexibilidad al programador y no limita los tipos de simulaciones, Este lenguaje tiene una sintaxis muy parecida a C, y al momento de la compilación es transformado a código C para luego ser compilado a binario. Además, este lenguaje de programación contiene bibliotecas que proveen de funciones ya programadas y listas para ser usadas, que van desde el cálculo de distancia molecular a funciones propias de la dinámica molecular.
+
+\subsubsection{AMBER Force Field}
+Este trabajo está basado en los avances de \cite{Dorn:2013}. Dicha investigación usa el campo de fuerza Amber en su versión \textit{AMBER99}. No obstante, según la documentación de AmberTools 14, para la simulación biomolecular de una secuencia de aminoácidos se recomienda usar la versión actualizada del campo de fuerza, que corresponde a \textit{AMBER14FF} (\citealp{simmer}).
+
+La función de energía potencial de Amber se calcula según la siguiente fórmula:
+
+\begin{equation}
+\begin{split}
+E_{total}=\sum_{bonds}\frac{1}{2}K_{b}(b-b_{0})^2 + \sum_{angles}\frac{1}{2}K_{\theta}(\theta-\theta_{0})^2 + \sum_{torsions}\frac{1}{2}K_{\eta}(1+\cos(\eta_{\omega}-\gamma)) \\
++ \sum_{j=1}^{N-1}\sum_{i=j+1}^{N-1}\left\{ \epsilon_{i,j}\left[ \left( \frac{R_{0ij}}{r_{ij}} \right)^{12}-2\left( \frac{R_{0ij}}{r_{ij}} \right)^{6} \right] + \frac{q_{i}q_{j}}{4\pi\epsilon_{0}r_{ij}} \right\}
+\end{split}
+\end{equation}
+dónde:
+\begin{itemize}
+	\item \textit{Bonds}: representa la energía entre los átomos unidos por enlaces covalentes
+	\item \textit{Angles}: representa la energía debido a la geometría de las órbitas del electrón envueltos en los enlaces covalente.
+	\item \textit{Torsions}: representa la energía para girar un enlace debido el orden de los enlaces, a la presencia de enlaces vecinos o a pares solitarios de electrones.
+	\item El último término corresponde la energía de los componentes no enlazados, que tal como se revisó en la ecuación \ref{eq:nonbonded}, corresponde a la energía electrostática y fuerzas o interacciones de \textit{van} der Waals.
+\end{itemize}
+
+\subsubsection{STRIDE}
+STRIDE \textit{Structural Identification} (\citealp{stridepaper}) es un algoritmo de asignación de estructuras secundarias de la proteína. STRIDE es similar al algoritmo DSSP, usa los enlaces de hidrógeno como criterio de clasificación pero también agrega los potenciales de los ángulos diedros. Por lo tanto, el criterio de clasificación de STRIDE es más completo y ha reportado asignaciones más satisfactorias en comparación a DSSP (\citealp{zhang:2015}). Por lo que se ha optado por STRIDE para predecir la estructura secundaria de las proteínas en estudio.
+
+
+\section{Criterios algorítmicos de evaluación }
+El análisis algorítmico evalúa la efectividad y eficiencia del algoritmo implementado, de la cual se puede obtener información para realizar modificaciones y mejoras. Para ello se expone las curvas de convergencia y la parametrización usada.
+
+\subsection{Tiempos de convergencia}
+Los tiempos de convergencia indican cuan rápido el algoritmo converge a una solución, este indicador sirve especialemente para evaluar cada cuánto tiempo se deben hacer reinicios de la población y los posibles cambios en la parametrización del algoritmo.
+
+\subsection{Parámetros}
+Los parámetros usados en la implementación del algoritmo son los siguientes:
+\begin{itemize}
+	\item \textbf{MAX\_SECS}: cantidad máxima de tiempo de ejecución en segundos.
+	\item \textbf{MAX\_GENS\_NOIMPROVE}: cantidad máxima de generaciones sin mejora.
+	\item \textbf{LS\_PROB}: probabilidad de aplicar el operador búsqueda local. 
+	\item \textbf{DIVERSITY}: valor considerado como diversidad.
+	\item \textbf{CROSSOVER} probabilidad de seleccionar residuos el primer padre.
+	\item \textbf{MUT\_ADJUSTMENT}: rango de mutación.
+	\item \textbf{MUT\_PROB}: probabilidad de aplicar el operador de mutación.
+	\item \textbf{JUMP\_PROB}: probabilidad de cambiar el punto de origen al hacer búsqueda local.
+	\item \textbf{JUMP\_RADIUS}: radio máximo de salto al cambiar el punto de origen en la búsqueda local.
+	\item \textbf{JUMP\_FACTOR}: factor que permite decrecer al radio de salto.
+\end{itemize}
+
+Finalmente, en este capítulo se presentan la duración y distribución de los experimentos, la batería de proteínas que se probarán y las aristas que serán evaluadas de las soluciones generadas por el algoritmo memético.
+
+\section{Criterios biológicos de evaluación }
+
+Desde un comienzo se ha comentado que el MA actúa en base a una función de minimización de energía que usa un operador de búsqueda local para alcanzar mejores soluciones. No obstante, la evaluación de las soluciones no puede ser solo desde ese punto de vista ya que el encontrar menores energías no implica que la solución sea la mejor. Esto se debe principalmente a las falencias que presentan los campos de fuerza existentes para simular el entorno atómico (\citealp{hornak:2006}). Es por ello que se evaluará su similitud tridimensional y de estructuras secundarias, y comportamiento estereoquímico.
+
+\subsection{Análisis RMSD}
+El RMSD (ecuación \ref{rmsd-eq}) es la medida promedio de la distancia entre átomos Carbono $\alpha$ ($C_{\alpha}$) en el espacio que se produce por la superposición de estructuras. La unidad de esta medida es en Ångströms.
+
+\begin{equation}
+RMSD(a,b) = \sqrt{\frac{1}{n}\sum_{i=1}^{n}||r_{ai} - r_{bi}||^2}
+\label{rmsd-eq}
+\end{equation}
+
+Para este análisis se usará la herramienta PROFIT, en la superposición se descartan los tres primeros y últimos residuos, ya que las proteínas presentan vibraciones y puntos de alta flexibilidad en los extremos que de considerarse implicaría un cálculo impreciso lo que puede dar una noción errada en el cálculo de RMSD. 
+
+\subsection{Análisis de estructura secundaria}
+Este análisis toma las soluciones creadas por el algoritmo memético, evalúa las estructuras secundarias detectadas y las compara con los estados conformacionales de la proteína experimental. STRIDE será la herramienta encargada de la determinación.
+Se considerarán las soluciones cuya energía sea la más baja y RMSD más bajo. Para el análisis visual se usará la herramienta PYMOL (\citealp{pymol}), ya que permite la visualización de las proteínas generadas en tres dimensiones además de dibujar las estructuras secundarias, también permite la superposición de estructuras con lo que se podrá apreciar la calidad de la solución predicha y la proteína experimental.
+
+\subsection{Análisis Estereoquímico}
+El análisis estereoquímico estudia las reacciones e interacciones producto de la disposición espacial de los átomos. Por ejemplo, en las predicciones de estructura de proteínas se debe tratar de minimizar los choques esteroquímicos, a medida que la solución presenta más choques, es más probable que no sea de buena calidad biológica. La herramienta PROCHECK (\citealp{procheck}) entrega mapas de Ramachandran con las áreas seguras o de baja probabilidad de choques estereoquímicos e indica la posición de los átomos de la solución evaluada en el mapa. 
+
+\subsection{Comportamiento proteínas extensas}
+
+Con el fin de tener una mejor visión sobre el comportamiento del algoritmo y sus posibles modificaciones, es que se realizará la prueba de RMSD y visual a un conjunto de 9 proteínas cuya extensión va desde los 35 a 119 residuos de aminoácidos.
